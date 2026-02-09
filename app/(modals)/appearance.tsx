@@ -5,7 +5,7 @@ import {
   Pressable,
   TouchableWithoutFeedback,
 } from "react-native";
-import { useTheme, ThemeMode } from "../context/ThemeContext";
+import { useTheme, ThemeMode } from "../../src/context/ThemeContext";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 

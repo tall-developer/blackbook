@@ -5,20 +5,23 @@ import {
   Alert,
   Linking,
   Modal,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   Pressable,
 } from "react-native";
-import { useTheme } from "../context/ThemeContext";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Slider from "@react-native-community/slider";
+import { useTheme } from "../../src/context/ThemeContext";
 
 type AppearanceMode = "Automatic" | "Light" | "Dark";
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { mode, setMode, theme, colorScheme } = useTheme();
+  const [interestRate, setInterestRate] = useState(5);
+  const [sliderWidth, setSliderWidth] = useState(0);
 
   const appearance = useMemo<AppearanceMode>(() => {
     if (mode === "light") return "Light";
@@ -41,6 +44,15 @@ export default function SettingsScreen() {
   };
   const cardBorder =
     colorScheme === "dark" ? "rgba(252,253,249,0.12)" : "rgba(0,0,0,0.06)";
+  const sliderMin = 0;
+  const sliderMax = 50;
+  const sliderStep = 5;
+  const bubbleWidth = 46;
+  const bubbleLeft =
+    sliderWidth > 0
+      ? ((interestRate - sliderMin) / (sliderMax - sliderMin)) *
+        (sliderWidth - bubbleWidth)
+      : 0;
 
   const AppearanceOption = ({
     label,
@@ -107,6 +119,44 @@ export default function SettingsScreen() {
             color={theme.textSecondary}
           />
         </TouchableOpacity>
+
+        <View style={styles.sliderWrap}>
+          <View style={styles.sliderHeader}>
+            <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>
+              Set rate
+            </Text>
+            <Text style={[styles.sliderValue, { color: theme.textPrimary }]}>
+              {interestRate}%
+            </Text>
+          </View>
+
+          <View
+            style={styles.sliderTrack}
+            onLayout={(event) => setSliderWidth(event.nativeEvent.layout.width)}
+          >
+            <View
+              style={[
+                styles.bubble,
+                { backgroundColor: theme.textPrimary, left: bubbleLeft },
+              ]}
+            >
+              <Text style={[styles.bubbleText, { color: theme.background }]}>
+                {interestRate}%
+              </Text>
+            </View>
+
+            <Slider
+              value={interestRate}
+              onValueChange={setInterestRate}
+              minimumValue={sliderMin}
+              maximumValue={sliderMax}
+              step={sliderStep}
+              minimumTrackTintColor={theme.primary}
+              maximumTrackTintColor={cardBorder}
+              thumbTintColor={theme.primary}
+            />
+          </View>
+        </View>
 
         <View style={[styles.divider, { backgroundColor: cardBorder }]} />
 
@@ -338,6 +388,39 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: "#EEE",
     marginHorizontal: 18,
+  },
+  sliderWrap: {
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+  },
+  sliderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sliderLabel: {
+    fontSize: 13,
+  },
+  sliderValue: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  sliderTrack: {
+    paddingTop: 24,
+  },
+  bubble: {
+    position: "absolute",
+    top: 0,
+    width: 46,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bubbleText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
 
   footer: {

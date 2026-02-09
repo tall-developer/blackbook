@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import HomeIcon from "../../components/icons/HomeIcon";
-import { useTheme } from "../context/ThemeContext";
+import { useTheme } from "../../src/context/ThemeContext";
 
 export default function TabsLayout() {
   const { theme, colorScheme } = useTheme();
@@ -31,8 +30,12 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <HomeIcon color={color} size={size} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "home" : "home-outline"}
+              size={22}
+              color={color}
+            />
           ),
         }}
       />

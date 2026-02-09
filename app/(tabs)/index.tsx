@@ -10,7 +10,6 @@ import {
   Platform,
   FlatList,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,11 +17,12 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Rect } from "react-native-svg";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import BlackbookLogo from "../components/BlackbookLogo";
-import { Debtor, useDebtors } from "../context/DebtorsContext";
-import { useTheme } from "../context/ThemeContext";
+import { Debtor, useDebtors } from "../../src/context/DebtorsContext";
+import { useTheme } from "../../src/context/ThemeContext";
 
 /* ---------------- HOME ---------------- */
 

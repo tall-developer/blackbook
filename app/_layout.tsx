@@ -7,8 +7,8 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { DebtorsProvider } from "./context/DebtorsContext";
-import { ThemeProvider } from "./context/ThemeContext";
+import { DebtorsProvider } from "../src/context/DebtorsContext";
+import { ThemeProvider } from "../src/context/ThemeContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -45,7 +45,6 @@ export default function RootLayout() {
           {/* Other screens */}
           <Stack.Screen name="interest-onboarding" />
           <Stack.Screen name="DebtorProfile" />
-          <Stack.Screen name="explore" />
           <Stack.Screen name="debtor" />
         </Stack>
       </DebtorsProvider>

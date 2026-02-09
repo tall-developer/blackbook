@@ -10,6 +10,7 @@ export type Debtor = {
   id: string;
   name: string;
   amount: number;
+  credibility?: Credibility;
   status: DebtorStatus;
   dueDate?: string; // optional if not always set
   createdAt: string;
