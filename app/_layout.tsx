@@ -6,15 +6,11 @@ import {
 } from "@expo-google-fonts/inter";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { DebtorsProvider } from "../context/DebtorsContext";
 import { ThemeProvider } from "../context/ThemeContext";
 
-// Note: Expo Go/dev clients can show startup UI that differs from production builds.
-// Validate final splash behavior using preview/release builds.
-void SplashScreen.preventAutoHideAsync().catch(() => {
-  // Ignore if already prevented by a fast refresh cycle.
-});
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -22,20 +18,14 @@ export default function RootLayout() {
     InterSemiBold: Inter_600SemiBold,
     InterBold: Inter_700Bold,
   });
-  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setMinSplashElapsed(true), 900);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (fontsLoaded && minSplashElapsed) {
-      void SplashScreen.hideAsync();
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, minSplashElapsed]);
+  }, [fontsLoaded]);
 
-  if (!fontsLoaded || !minSplashElapsed) return null;
+  if (!fontsLoaded) return null;
 
   return (
     <ThemeProvider>
@@ -49,6 +39,8 @@ export default function RootLayout() {
             name="(modals)"
             options={{
               presentation: "transparentModal",
+              sheetAllowedDetents: [0.45],
+              contentStyle: { backgroundColor: "transparent" },
             }}
           />
 
