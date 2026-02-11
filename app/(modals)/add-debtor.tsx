@@ -12,8 +12,8 @@ import {
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useDebtors } from "../../src/context/DebtorsContext";
-import { useTheme } from "../../src/context/ThemeContext";
+import { useDebtors } from "../../context/DebtorsContext";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function AddDebtorModal() {
   const router = useRouter();

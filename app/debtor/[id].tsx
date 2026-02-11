@@ -3,8 +3,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useDebtors } from "../../src/context/DebtorsContext";
-import { useTheme } from "../../src/context/ThemeContext";
+import { useDebtors } from "../../context/DebtorsContext";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function DebtorProfile() {
   const router = useRouter();

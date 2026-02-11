@@ -1,39 +1,95 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+﻿import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Slider from "@react-native-community/slider";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking,
   Modal,
+  Pressable,
+  ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
-  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Slider from "@react-native-community/slider";
-import { useTheme } from "../../src/context/ThemeContext";
+import { useDebtors } from "../../context/DebtorsContext";
+import { useTheme } from "../../context/ThemeContext";
 
 type AppearanceMode = "Automatic" | "Light" | "Dark";
 
+const NOTIF_ENABLED_KEY = "bb:notif-enabled";
+const NOTIF_DAYS_KEY = "bb:notif-days-before";
+
 export default function SettingsScreen() {
-  const router = useRouter();
   const { mode, setMode, theme, colorScheme } = useTheme();
-  const [interestRate, setInterestRate] = useState(5);
+  const { interestRate, setInterestRate } = useDebtors();
+
   const [sliderWidth, setSliderWidth] = useState(0);
+  const [showAppearance, setShowAppearance] = useState(false);
+  const [showInterestModal, setShowInterestModal] = useState(false);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [notifDaysBefore, setNotifDaysBefore] = useState(3);
+  const [notifHydrated, setNotifHydrated] = useState(false);
 
   const appearance = useMemo<AppearanceMode>(() => {
     if (mode === "light") return "Light";
     if (mode === "dark") return "Dark";
     return "Automatic";
   }, [mode]);
-  const [showAppearance, setShowAppearance] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadNotificationSettings = async () => {
+      try {
+        const [enabledRaw, daysRaw] = await Promise.all([
+          AsyncStorage.getItem(NOTIF_ENABLED_KEY),
+          AsyncStorage.getItem(NOTIF_DAYS_KEY),
+        ]);
+
+        if (!mounted) return;
+
+        if (enabledRaw !== null) {
+          setNotifEnabled(enabledRaw === "true");
+        }
+
+        if (daysRaw !== null) {
+          const parsed = Number(daysRaw);
+          if (!Number.isNaN(parsed)) {
+            setNotifDaysBefore(parsed);
+          }
+        }
+      } finally {
+        if (mounted) setNotifHydrated(true);
+      }
+    };
+
+    void loadNotificationSettings();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!notifHydrated) return;
+    void AsyncStorage.setItem(NOTIF_ENABLED_KEY, String(notifEnabled));
+  }, [notifEnabled, notifHydrated]);
+
+  useEffect(() => {
+    if (!notifHydrated) return;
+    void AsyncStorage.setItem(NOTIF_DAYS_KEY, String(notifDaysBefore));
+  }, [notifDaysBefore, notifHydrated]);
+
   const SUPPORT_LINKS = {
     coffee: "https://www.buymeacoffee.com/tall_dev",
     email:
       "mailto:support@blackbook.app?subject=Bug%20Report&body=Please%20describe%20the%20issue:",
   };
+
   const openLink = async (url: string) => {
     const supported = await Linking.canOpenURL(url);
     if (!supported) {
@@ -42,8 +98,10 @@ export default function SettingsScreen() {
     }
     await Linking.openURL(url);
   };
+
   const cardBorder =
     colorScheme === "dark" ? "rgba(252,253,249,0.12)" : "rgba(0,0,0,0.06)";
+
   const sliderMin = 0;
   const sliderMax = 50;
   const sliderStep = 5;
@@ -81,7 +139,11 @@ export default function SettingsScreen() {
         </View>
 
         {selected && (
-          <Ionicons name="checkmark-circle" size={22} color={theme.textPrimary} />
+          <Ionicons
+            name="checkmark-circle"
+            size={22}
+            color={theme.textPrimary}
+          />
         )}
       </TouchableOpacity>
     );
@@ -91,208 +153,170 @@ export default function SettingsScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
-      {/* Header */}
-      <Text style={[styles.title, { color: theme.textPrimary }]}>Settings</Text>
-
-      {/* Preferences */}
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: theme.card, borderColor: cardBorder },
-        ]}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        stickyHeaderIndices={[0]}
       >
-        <TouchableOpacity style={styles.row}>
-          <View style={styles.rowLeft}>
-            <Ionicons
-              name="trending-up-outline"
-              size={22}
-              color={theme.textSecondary}
-            />
-            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}
-            >
-              Interest rate
-            </Text>
-          </View>
-          <Ionicons
-            name="chevron-forward-outline"
-            size={20}
-            color={theme.textSecondary}
-          />
-        </TouchableOpacity>
-
-        <View style={styles.sliderWrap}>
-          <View style={styles.sliderHeader}>
-            <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>
-              Set rate
-            </Text>
-            <Text style={[styles.sliderValue, { color: theme.textPrimary }]}>
-              {interestRate}%
-            </Text>
-          </View>
-
-          <View
-            style={styles.sliderTrack}
-            onLayout={(event) => setSliderWidth(event.nativeEvent.layout.width)}
-          >
-            <View
-              style={[
-                styles.bubble,
-                { backgroundColor: theme.textPrimary, left: bubbleLeft },
-              ]}
-            >
-              <Text style={[styles.bubbleText, { color: theme.background }]}>
-                {interestRate}%
-              </Text>
-            </View>
-
-            <Slider
-              value={interestRate}
-              onValueChange={setInterestRate}
-              minimumValue={sliderMin}
-              maximumValue={sliderMax}
-              step={sliderStep}
-              minimumTrackTintColor={theme.primary}
-              maximumTrackTintColor={cardBorder}
-              thumbTintColor={theme.primary}
-            />
-          </View>
+        <View
+          style={[styles.stickyHeader, { backgroundColor: theme.background }]}
+        >
+          <Text style={[styles.title, { color: theme.textPrimary }]}>Settings</Text>
         </View>
 
-        <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.card, borderColor: cardBorder },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setShowInterestModal(true)}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="trending-up-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Interest rate</Text>
+            </View>
+            <View style={styles.rowRight}>
+              <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
+                {interestRate}%
+              </Text>
+              <Ionicons
+                name="chevron-forward-outline"
+                size={20}
+                color={theme.textSecondary}
+              />
+            </View>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.row}>
-          <View style={styles.rowLeft}>
+          <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setShowNotificationsModal(true)}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="notifications-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Notifications</Text>
+            </View>
+            <View style={styles.rowRight}>
+              <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
+                {notifEnabled ? `${notifDaysBefore}d` : "Off"}
+              </Text>
+              <Ionicons
+                name="chevron-forward-outline"
+                size={20}
+                color={theme.textSecondary}
+              />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.card, borderColor: cardBorder },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setShowAppearance(true)}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="moon-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Appearance</Text>
+            </View>
             <Ionicons
-              name="notifications-outline"
-              size={22}
+              name="chevron-forward-outline"
+              size={20}
               color={theme.textSecondary}
             />
-            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}
-            >
-              Notifications
-            </Text>
-          </View>
-          <Ionicons
-            name="chevron-forward-outline"
-            size={20}
-            color={theme.textSecondary}
-          />
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
+        </View>
 
-      {/* Appearance */}
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: theme.card, borderColor: cardBorder },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => setShowAppearance(true)}
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.card, borderColor: cardBorder },
+          ]}
         >
-          <View style={styles.rowLeft}>
-            <Ionicons name="moon-outline" size={22} color={theme.textSecondary} />
-            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}
-            >
-              Appearance
-            </Text>
-          </View>
-          <Ionicons
-            name="chevron-forward-outline"
-            size={20}
-            color={theme.textSecondary}
-          />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => openLink(SUPPORT_LINKS.coffee)}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="help-circle-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Buy Me a Coffee</Text>
+            </View>
+          </TouchableOpacity>
 
-      {/* Support */}
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: theme.card, borderColor: cardBorder },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => openLink(SUPPORT_LINKS.coffee)}
-        >
-          <View style={styles.rowLeft}>
-            <Ionicons
-              name="help-circle-outline"
-              size={22}
-              color={theme.textSecondary}
-            />
-            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}
-            >
-              Buy Me a Coffee
-            </Text>
-          </View>
-        </TouchableOpacity>
+          <View style={[styles.divider, { backgroundColor: cardBorder }]} />
 
-        <View style={[styles.divider, { backgroundColor: cardBorder }]} />
-
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => {
-            Alert.alert(
-              "Rate BlackBook",
-              "Thanks for supporting BlackBook ❤️",
-              [
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => {
+              Alert.alert("Rate BlackBook", "Thanks for supporting BlackBook app!", [
                 {
                   text: "Rate Now",
                   onPress: () =>
-                    Linking.openURL(
-                      "market://details?id=com.yourcompany.blackbook",
-                    ),
+                    Linking.openURL("market://details?id=com.yourcompany.blackbook"),
                 },
                 { text: "Later", style: "cancel" },
-              ],
-            );
-          }}
-        >
-          <View style={styles.rowLeft}>
-            <Ionicons name="mail-outline" size={22} color={theme.textSecondary} />
-            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}
-            >
-              Rate App
-            </Text>
-          </View>
-        </TouchableOpacity>
+              ]);
+            }}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="mail-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Rate App</Text>
+            </View>
+          </TouchableOpacity>
 
-        <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+          <View style={[styles.divider, { backgroundColor: cardBorder }]} />
 
-        <TouchableOpacity
-          style={styles.row}
-          onPress={() => openLink(SUPPORT_LINKS.email)}
-        >
-          <View style={styles.rowLeft}>
-            <Ionicons name="bug-outline" size={22} color={theme.textSecondary} />
-            <Text style={[styles.rowLabel, { color: theme.textPrimary }]}
-            >
-              Report a bug
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => openLink(SUPPORT_LINKS.email)}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="bug-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Report a bug</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={[styles.footerText, { color: theme.textPrimary }]}
-        >
-          Made with ❤️ by Lindani Grootboom
-        </Text>
-        <Text style={[styles.footerSub, { color: theme.textSecondary }]}
-        >
-          Solo Developer • Addo, South Africa
-        </Text>
-        <Text style={[styles.footerSub, { color: theme.textSecondary }]}
-        >
-          v1.0.0
-        </Text>
-      </View>
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, { color: theme.textPrimary }]}>
+            Made with love by Lindani Grootboom
+          </Text>
+          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>Solo Developer • Addo, South Africa</Text>
+          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>v1.0.0</Text>
+        </View>
+      </ScrollView>
 
-      {/* ───────── Appearance Modal ───────── */}
       <Modal
         visible={showAppearance}
         transparent
@@ -305,9 +329,7 @@ export default function SettingsScreen() {
             styles.modalOverlay,
             {
               backgroundColor:
-                colorScheme === "dark"
-                  ? "rgba(0,0,0,0.6)"
-                  : "rgba(0,0,0,0.45)",
+                colorScheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)",
             },
           ]}
           onPress={() => setShowAppearance(false)}
@@ -316,10 +338,7 @@ export default function SettingsScreen() {
             style={[styles.modalCard, { backgroundColor: theme.card }]}
             onPress={() => {}}
           >
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}
-            >
-              Appearance
-            </Text>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Appearance</Text>
 
             <AppearanceOption label="Automatic" icon="settings-outline" />
             <AppearanceOption label="Light" icon="sunny-outline" />
@@ -329,9 +348,177 @@ export default function SettingsScreen() {
               style={[styles.closeButton, { backgroundColor: theme.primary }]}
               onPress={() => setShowAppearance(false)}
             >
-              <Text style={[styles.closeButtonText, { color: theme.background }]}
+              <Text
+                style={[styles.closeButtonText, { color: theme.background }]}
               >
                 Close
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showInterestModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowInterestModal(false)}
+      >
+        <Pressable
+          style={[
+            styles.modalOverlay,
+            {
+              backgroundColor:
+                colorScheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)",
+            },
+          ]}
+          onPress={() => setShowInterestModal(false)}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Interest Rate</Text>
+
+            <View style={styles.sliderWrap}>
+              <View style={styles.sliderHeader}>
+                <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>Set rate</Text>
+                <Text style={[styles.sliderValue, { color: theme.textPrimary }]}>{interestRate}%</Text>
+              </View>
+
+              <View
+                style={styles.sliderTrack}
+                onLayout={(event) =>
+                  setSliderWidth(event.nativeEvent.layout.width)
+                }
+              >
+                <View
+                  style={[
+                    styles.bubble,
+                    { backgroundColor: theme.textPrimary, left: bubbleLeft },
+                  ]}
+                >
+                  <Text style={[styles.bubbleText, { color: theme.background }]}>{interestRate}%</Text>
+                </View>
+
+                <Slider
+                  value={interestRate}
+                  onValueChange={setInterestRate}
+                  minimumValue={sliderMin}
+                  maximumValue={sliderMax}
+                  step={sliderStep}
+                  minimumTrackTintColor={theme.primary}
+                  maximumTrackTintColor={cardBorder}
+                  thumbTintColor={theme.primary}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.primary }]}
+              onPress={() => setShowInterestModal(false)}
+            >
+              <Text
+                style={[styles.closeButtonText, { color: theme.background }]}
+              >
+                Done
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showNotificationsModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowNotificationsModal(false)}
+      >
+        <Pressable
+          style={[
+            styles.modalOverlay,
+            {
+              backgroundColor:
+                colorScheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)",
+            },
+          ]}
+          onPress={() => setShowNotificationsModal(false)}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Notifications</Text>
+
+            <View style={styles.notifyRow}>
+              <Text style={[styles.notifyLabel, { color: theme.textPrimary }]}>
+                Upcoming collections alerts
+              </Text>
+              <Switch
+                value={notifEnabled}
+                onValueChange={setNotifEnabled}
+                trackColor={{ false: theme.border, true: theme.primary }}
+                thumbColor={theme.background}
+              />
+            </View>
+
+            <View
+              style={[
+                styles.divider,
+                { backgroundColor: cardBorder, marginHorizontal: 0 },
+              ]}
+            />
+
+            <Text
+              style={[
+                styles.sliderLabel,
+                { color: theme.textSecondary, marginTop: 14 },
+              ]}
+            >
+              Days-before threshold
+            </Text>
+            <Text
+              style={[
+                styles.sliderValue,
+                { color: theme.textPrimary, marginTop: 6 },
+              ]}
+            >
+              {notifDaysBefore} day{notifDaysBefore === 1 ? "" : "s"}
+            </Text>
+
+            <Slider
+              value={notifDaysBefore}
+              onValueChange={(v) => setNotifDaysBefore(Math.round(v))}
+              minimumValue={1}
+              maximumValue={14}
+              step={1}
+              minimumTrackTintColor={theme.primary}
+              maximumTrackTintColor={cardBorder}
+              thumbTintColor={theme.primary}
+              disabled={!notifEnabled}
+            />
+
+            <TouchableOpacity
+              style={[styles.openSettingsButton, { borderColor: cardBorder }]}
+              onPress={() => {
+                void Linking.openSettings();
+              }}
+            >
+              <Text style={[styles.openSettingsText, { color: theme.textPrimary }]}> 
+                Open Phone Notification Settings
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.primary }]}
+              onPress={() => setShowNotificationsModal(false)}
+            >
+              <Text
+                style={[styles.closeButtonText, { color: theme.background }]}
+              >
+                Done
               </Text>
             </TouchableOpacity>
           </Pressable>
@@ -346,7 +533,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F4F5F7",
     paddingHorizontal: 16,
-    paddingTop: 40,
+    paddingTop: 8,
+  },
+  scrollContent: {
+    paddingBottom: 32,
   },
 
   title: {
@@ -354,6 +544,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#111",
     marginBottom: 20,
+  },
+  stickyHeader: {
+    paddingTop: 0,
+    paddingBottom: 0,
   },
 
   card: {
@@ -377,11 +571,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
   },
+  rowRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
 
   rowLabel: {
     fontSize: 16,
     fontWeight: "600",
     color: "#111",
+  },
+  rateValue: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 
   divider: {
@@ -390,7 +593,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 18,
   },
   sliderWrap: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 0,
     paddingBottom: 12,
   },
   sliderHeader: {
@@ -424,8 +627,8 @@ const styles = StyleSheet.create({
   },
 
   footer: {
-    marginTop: "auto",
     alignItems: "center",
+    paddingTop: 16,
     paddingBottom: 24,
   },
 
@@ -441,7 +644,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
-  /* Modal */
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -495,5 +697,30 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: "#FFF",
     fontWeight: "600",
+  },
+  notifyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  notifyLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    flex: 1,
+    marginRight: 12,
+  },
+  openSettingsButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  openSettingsText: {
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
   },
 });

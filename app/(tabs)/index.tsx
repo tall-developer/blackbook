@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
   Animated,
+  FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
   Platform,
-  FlatList,
   Pressable,
   StyleSheet,
   Text,
@@ -19,14 +21,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Rect } from "react-native-svg";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { Debtor, useDebtors } from "../../context/DebtorsContext";
+import { useTheme } from "../../context/ThemeContext";
 import BlackbookLogo from "../components/BlackbookLogo";
-import { Debtor, useDebtors } from "../../src/context/DebtorsContext";
-import { useTheme } from "../../src/context/ThemeContext";
 
 /* ---------------- HOME ---------------- */
 
 export default function HomeScreen() {
+  const NOTIF_ENABLED_KEY = "bb:notif-enabled";
+  const NOTIF_DAYS_KEY = "bb:notif-days-before";
   const router = useRouter();
   const { debtors, addDebtor } = useDebtors();
   const hasDebtors = debtors.length > 0;
@@ -37,7 +40,27 @@ export default function HomeScreen() {
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState<number | undefined>(undefined);
   const [showPicker, setShowPicker] = React.useState(false);
+  const [notifEnabled, setNotifEnabled] = React.useState(true);
+  const [notifDaysBefore, setNotifDaysBefore] = React.useState(3);
   const translateY = React.useRef(new Animated.Value(0)).current;
+
+  const loadNotificationSettings = React.useCallback(async () => {
+    try {
+      const [enabledRaw, daysRaw] = await Promise.all([
+        AsyncStorage.getItem(NOTIF_ENABLED_KEY),
+        AsyncStorage.getItem(NOTIF_DAYS_KEY),
+      ]);
+      if (enabledRaw !== null) {
+        setNotifEnabled(enabledRaw === "true");
+      }
+      if (daysRaw !== null) {
+        const parsed = Number(daysRaw);
+        if (!Number.isNaN(parsed)) setNotifDaysBefore(parsed);
+      }
+    } catch {
+      // Keep defaults if settings fail to load.
+    }
+  }, []);
 
   const submit = () => {
     if (!name || !amount) return;
@@ -57,15 +80,27 @@ export default function HomeScreen() {
   const inputBorder =
     colorScheme === "dark" ? "rgba(252,253,249,0.2)" : "rgba(0,0,0,0.12)";
 
-  const daysAhead = 3;
+  React.useEffect(() => {
+    void loadNotificationSettings();
+  }, [loadNotificationSettings]);
+
+  React.useEffect(() => {
+    if (showNotifications) {
+      void loadNotificationSettings();
+    }
+  }, [showNotifications, loadNotificationSettings]);
+
+  const daysAhead = notifDaysBefore;
   const now = new Date();
-  const upcomingDebtors = debtors.filter(
+  const upcomingDebtors = !notifEnabled
+    ? []
+    : debtors.filter(
     (d): d is Debtor & { dueDate: string } => {
-    if (!d.dueDate || d.status === "Settled") return false;
-    const due = new Date(d.dueDate);
-    const diffMs = due.getTime() - now.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= daysAhead;
+      if (!d.dueDate || d.status === "Settled") return false;
+      const due = new Date(d.dueDate);
+      const diffMs = due.getTime() - now.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      return diffDays >= 0 && diffDays <= daysAhead;
     },
   );
 
@@ -96,20 +131,19 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
-      style={[
-        styles.container,
-        { backgroundColor: theme.background },
-      ]}
+      style={[styles.container, { backgroundColor: theme.background }]}
     >
       {!hasDebtors ? (
         <EmptyState
           onAdd={() => setShowAddModal(true)}
           onNotifications={() => setShowNotifications(true)}
+          hasAlert={notifEnabled && upcomingDebtors.length > 0}
         />
       ) : (
         <NormalHome
           debtors={debtors}
           onNotifications={() => setShowNotifications(true)}
+          hasAlert={notifEnabled && upcomingDebtors.length > 0}
         />
       )}
 
@@ -142,9 +176,7 @@ export default function HomeScreen() {
             ]}
             onPress={closeAddModal}
           >
-            <View
-              style={styles.modalOverlay}
-            >
+            <View style={styles.modalOverlay}>
               <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <Animated.View
                   style={[
@@ -163,7 +195,9 @@ export default function HomeScreen() {
                     ]}
                   />
 
-                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+                  <Text
+                    style={[styles.modalTitle, { color: theme.textPrimary }]}
+                  >
                     Add debtor
                   </Text>
 
@@ -235,7 +269,10 @@ export default function HomeScreen() {
                   )}
 
                   <Pressable
-                    style={[styles.modalButton, { backgroundColor: theme.primary }]}
+                    style={[
+                      styles.modalButton,
+                      { backgroundColor: theme.primary },
+                    ]}
                     onPress={submit}
                   >
                     <Text
@@ -262,10 +299,7 @@ export default function HomeScreen() {
         onRequestClose={() => setShowNotifications(false)}
       >
         <Pressable
-          style={[
-            styles.modalOverlay,
-            { backgroundColor: "rgba(0,0,0,0.6)" },
-          ]}
+          style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.6)" }]}
           onPress={() => setShowNotifications(false)}
         >
           <Pressable
@@ -276,28 +310,33 @@ export default function HomeScreen() {
               Upcoming collections
             </Text>
             <Text style={[styles.noticeSub, { color: theme.textSecondary }]}>
-              Next {daysAhead} days
+              {notifEnabled
+                ? `Next ${daysAhead} day${daysAhead === 1 ? "" : "s"}`
+                : "Alerts are currently disabled"}
             </Text>
 
-            {upcomingDebtors.length === 0 ? (
-              <Text style={[styles.noticeEmpty, { color: theme.textSecondary }]}>
+            {!notifEnabled ? (
+              <Text
+                style={[styles.noticeEmpty, { color: theme.textSecondary }]}
+              >
+                Enable alerts in Settings &gt; Notifications to track upcoming
+                collections.
+              </Text>
+            ) : upcomingDebtors.length === 0 ? (
+              <Text
+                style={[styles.noticeEmpty, { color: theme.textSecondary }]}
+              >
                 No upcoming collections.
               </Text>
             ) : (
               upcomingDebtors.map((d) => (
                 <View
                   key={d.id}
-                  style={[
-                    styles.noticeRow,
-                    { borderColor: theme.border },
-                  ]}
+                  style={[styles.noticeRow, { borderColor: theme.border }]}
                 >
                   <View style={styles.noticeLeft}>
                     <Text
-                      style={[
-                        styles.noticeName,
-                        { color: theme.textPrimary },
-                      ]}
+                      style={[styles.noticeName, { color: theme.textPrimary }]}
                     >
                       {d.name}
                     </Text>
@@ -311,10 +350,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Text
-                    style={[
-                      styles.noticeAmount,
-                      { color: theme.textPrimary },
-                    ]}
+                    style={[styles.noticeAmount, { color: theme.textPrimary }]}
                   >
                     R{d.amount.toFixed(2)}
                   </Text>
@@ -333,30 +369,25 @@ export default function HomeScreen() {
 function EmptyState({
   onAdd,
   onNotifications,
+  hasAlert,
 }: {
   onAdd: () => void;
   onNotifications: () => void;
+  hasAlert: boolean;
 }) {
   const { theme } = useTheme();
 
   return (
-    <View
-      style={[
-        styles.emptyWrapper,
-        { backgroundColor: theme.background },
-      ]}
-    >
+    <View style={[styles.emptyWrapper, { backgroundColor: theme.background }]}>
       {/* App Bar */}
       <View style={styles.emptyHeader}>
         <BlackbookLogo size={30} />
 
-        <Pressable hitSlop={10} onPress={onNotifications}>
-          <Ionicons
-            name="notifications-outline"
-            size={24}
-            color={theme.textSecondary}
-          />
-        </Pressable>
+        <NotificationBell
+          onPress={onNotifications}
+          hasAlert={hasAlert}
+          color={theme.textSecondary}
+        />
       </View>
 
       {/* Content */}
@@ -419,9 +450,11 @@ function EmptyState({
 function NormalHome({
   debtors,
   onNotifications,
+  hasAlert,
 }: {
   debtors: Debtor[];
   onNotifications: () => void;
+  hasAlert: boolean;
 }) {
   const router = useRouter();
   const { theme } = useTheme();
@@ -433,24 +466,17 @@ function NormalHome({
   ).length;
 
   return (
-    <View
-      style={[
-        styles.normalWrapper,
-        { backgroundColor: theme.background },
-      ]}
-    >
+    <View style={[styles.normalWrapper, { backgroundColor: theme.background }]}>
       {/* Header */}
       {/* App Bar */}
       <View style={styles.emptyHeader}>
         <BlackbookLogo size={30} />
 
-        <Pressable hitSlop={10} onPress={onNotifications}>
-          <Ionicons
-            name="notifications-outline"
-            size={24}
-            color={theme.textSecondary}
-          />
-        </Pressable>
+        <NotificationBell
+          onPress={onNotifications}
+          hasAlert={hasAlert}
+          color={theme.textSecondary}
+        />
       </View>
 
       {/* Balance Card */}
@@ -503,18 +529,10 @@ function NormalHome({
         contentContainerStyle={{ paddingBottom: 120 }}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={[
-              styles.debtorCard,
-              { backgroundColor: theme.card },
-            ]}
+            style={[styles.debtorCard, { backgroundColor: theme.card }]}
             onPress={() => router.push(`/debtor/${item.id}`)}
           >
-            <View
-              style={[
-                styles.avatar,
-                { backgroundColor: theme.border },
-              ]}
-            >
+            <View style={[styles.avatar, { backgroundColor: theme.border }]}>
               <Text style={[styles.avatarText, { color: theme.textPrimary }]}>
                 {item.name.charAt(0).toUpperCase()}
               </Text>
@@ -525,11 +543,15 @@ function NormalHome({
                 {item.name}
               </Text>
               {item.dueDate ? (
-                <Text style={[styles.debtorMeta, { color: theme.textSecondary }]}>
+                <Text
+                  style={[styles.debtorMeta, { color: theme.textSecondary }]}
+                >
                   Due Date • {new Date(item.dueDate).toLocaleDateString()}
                 </Text>
               ) : (
-                <Text style={[styles.debtorMeta, { color: theme.textSecondary }]}>
+                <Text
+                  style={[styles.debtorMeta, { color: theme.textSecondary }]}
+                >
                   No due date
                 </Text>
               )}
@@ -542,6 +564,23 @@ function NormalHome({
         )}
       />
     </View>
+  );
+}
+
+function NotificationBell({
+  onPress,
+  hasAlert,
+  color,
+}: {
+  onPress: () => void;
+  hasAlert: boolean;
+  color: string;
+}) {
+  return (
+    <Pressable hitSlop={10} onPress={onPress} style={styles.bellWrap}>
+      <Ionicons name="notifications-outline" size={24} color={color} />
+      {hasAlert && <View style={styles.bellDot} />}
+    </Pressable>
   );
 }
 
@@ -559,7 +598,7 @@ const styles = StyleSheet.create({
   /* App Bars */
   emptyHeader: {
     paddingHorizontal: 20,
-    paddingTop: 28, // lowered from safe area
+    paddingTop: 8, // lowered from safe area
     paddingBottom: 16,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -590,6 +629,18 @@ const styles = StyleSheet.create({
   },
 
   /* Empty State */
+  bellWrap: {
+    position: "relative",
+  },
+  bellDot: {
+    position: "absolute",
+    top: 1,
+    right: 1,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#E53935",
+  },
   emptyWrapper: { flex: 1 },
   emptyContent: {
     flex: 1,
