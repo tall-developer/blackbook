@@ -6,11 +6,15 @@ import {
 } from "@expo-google-fonts/inter";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { DebtorsProvider } from "../context/DebtorsContext";
-import { ThemeProvider } from "../context/ThemeContext";
+import { ThemeProvider, useTheme } from "../context/ThemeContext";
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync().catch(() => {
+  // Ignore if already prevented by a fast refresh cycle.
+});
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -18,38 +22,59 @@ export default function RootLayout() {
     InterSemiBold: Inter_600SemiBold,
     InterBold: Inter_700Bold,
   });
+  const [minSplashElapsed, setMinSplashElapsed] = useState(false);
 
   useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
+    const timer = setTimeout(() => setMinSplashElapsed(true), 900);
+    return () => clearTimeout(timer);
+  }, []);
 
-  if (!fontsLoaded) return null;
+  useEffect(() => {
+    if (fontsLoaded && minSplashElapsed) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, minSplashElapsed]);
+
+  if (!fontsLoaded || !minSplashElapsed) return null;
 
   return (
-    <ThemeProvider>
-      <DebtorsProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          {/* Tabs */}
-          <Stack.Screen name="(tabs)" />
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <DebtorsProvider>
+          <AppStack />
+        </DebtorsProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
+  );
+}
 
-          {/* Modals */}
-          <Stack.Screen
-            name="(modals)"
-            options={{
-              presentation: "transparentModal",
-              sheetAllowedDetents: [0.45],
-              contentStyle: { backgroundColor: "transparent" },
-            }}
-          />
+function AppStack() {
+  const { theme } = useTheme();
 
-          {/* Other screens */}
-          <Stack.Screen name="interest-onboarding" />
-          <Stack.Screen name="DebtorProfile" />
-          <Stack.Screen name="debtor" />
-        </Stack>
-      </DebtorsProvider>
-    </ThemeProvider>
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <Stack
+        initialRouteName="onboarding"
+        screenOptions={{
+          headerShown: false,
+          animation: "none",
+          contentStyle: { backgroundColor: theme.background },
+        }}
+      >
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="(modals)"
+          options={{
+            presentation: "transparentModal",
+            sheetAllowedDetents: [0.45],
+            contentStyle: { backgroundColor: "transparent" },
+          }}
+        />
+        <Stack.Screen name="interest-onboarding" />
+        <Stack.Screen name="DebtorProfile" />
+        <Stack.Screen name="debtor" />
+      </Stack>
+    </View>
   );
 }

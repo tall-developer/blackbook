@@ -7,7 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 
 export default function SummaryScreen() {
   const { debtors, interestRate } = useDebtors();
-  const { theme } = useTheme();
+  const { theme, colorScheme } = useTheme();
 
   const totalBalance = debtors.reduce((sum, d) => sum + (d.amount || 0), 0);
   const principal =
@@ -85,11 +85,23 @@ export default function SummaryScreen() {
         <View
           style={[
             styles.metricCard,
+            colorScheme === "dark"
+              ? styles.metricTintOverdueDark
+              : styles.metricTintOverdueLight,
             { borderColor: "rgba(255,255,255,0.08)" },
           ]}
         >
-          <Ionicons name="alert-circle-outline" size={20} color="#E53935" />
-          <Text style={[styles.metricValue, styles.overdueText]}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={20}
+            color={colorScheme === "dark" ? "#F87171" : "#E53935"}
+          />
+          <Text
+            style={[
+              styles.metricValue,
+              { color: colorScheme === "dark" ? "#FCA5A5" : "#E53935" },
+            ]}
+          >
             {overdueCount}
           </Text>
           <Text style={[styles.metricLabel, { color: theme.textSecondary }]}> 
@@ -165,6 +177,12 @@ const styles = StyleSheet.create({
   },
   metricTintBlue: {
     backgroundColor: "#1a2d3d15",
+  },
+  metricTintOverdueDark: {
+    backgroundColor: "rgba(239,68,68,0.14)",
+  },
+  metricTintOverdueLight: {
+    backgroundColor: "rgba(229,57,53,0.08)",
   },
   primaryButton: {
     marginTop: 8,

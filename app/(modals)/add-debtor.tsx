@@ -3,6 +3,7 @@ import { useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -11,7 +12,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { Calendar, DateData } from "react-native-calendars";
 import { useDebtors } from "../../context/DebtorsContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -26,6 +27,13 @@ export default function AddDebtorModal() {
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState<number | undefined>(undefined);
   const [showPicker, setShowPicker] = useState(false);
+  const [pendingDueDate, setPendingDueDate] = useState<string | undefined>(
+    undefined,
+  );
+  const selectedDueDate = dueDate
+    ? new Date(dueDate).toISOString().split("T")[0]
+    : undefined;
+  const todayDate = new Date().toISOString().split("T")[0];
 
   const submit = () => {
     if (!name || !amount) return;
@@ -108,7 +116,12 @@ export default function AddDebtorModal() {
             />
 
             {/* Due Date Picker */}
-            <Pressable onPress={() => setShowPicker(true)}>
+            <Pressable
+              onPress={() => {
+                setPendingDueDate(selectedDueDate);
+                setShowPicker(true);
+              }}
+            >
               <View pointerEvents="none">
                 <TextInput
                   placeholder="Due date"
@@ -130,21 +143,6 @@ export default function AddDebtorModal() {
               </View>
             </Pressable>
 
-            {showPicker && (
-              <DateTimePicker
-                value={dueDate ? new Date(dueDate) : new Date()}
-                mode="date"
-                display="default"
-                onChange={(event, selectedDate) => {
-                  setShowPicker(false);
-
-                  if (selectedDate) {
-                    setDueDate(selectedDate.getTime());
-                  }
-                }}
-              />
-            )}
-
             <Pressable
               style={[styles.button, { backgroundColor: theme.primary }]}
               onPress={submit}
@@ -156,6 +154,79 @@ export default function AddDebtorModal() {
           </View>
         </View>
       </TouchableWithoutFeedback>
+
+      <Modal
+        visible={showPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPicker(false)}
+      >
+        <Pressable
+          style={styles.calendarOverlay}
+          onPress={() => setShowPicker(false)}
+        >
+          <Pressable
+            style={[styles.calendarCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <Calendar
+              current={pendingDueDate ?? selectedDueDate}
+              minDate={todayDate}
+              markedDates={
+                (pendingDueDate ?? selectedDueDate)
+                  ? {
+                      [(pendingDueDate ?? selectedDueDate) as string]: {
+                        selected: true,
+                        selectedColor: theme.primary,
+                      },
+                    }
+                  : undefined
+              }
+              onDayPress={(day: DateData) => {
+                setPendingDueDate(day.dateString);
+              }}
+              theme={{
+                calendarBackground: theme.card,
+                dayTextColor: theme.textPrimary,
+                monthTextColor: theme.textPrimary,
+                arrowColor: theme.primary,
+                textDisabledColor: theme.textSecondary,
+                todayTextColor: theme.primary,
+              }}
+            />
+            <View style={styles.calendarActions}>
+              <Pressable
+                style={[styles.calendarActionBtn, { borderColor: theme.border }]}
+                onPress={() => {
+                  setPendingDueDate(undefined);
+                  setDueDate(undefined);
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={[styles.calendarActionText, { color: theme.textSecondary }]}>
+                  Clear
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.calendarActionBtn,
+                  { backgroundColor: theme.primary, borderColor: theme.primary },
+                ]}
+                onPress={() => {
+                  if (pendingDueDate) {
+                    setDueDate(new Date(`${pendingDueDate}T00:00:00`).getTime());
+                  }
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={[styles.calendarActionText, { color: theme.background }]}>
+                  Done
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -206,5 +277,33 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
     textAlign: "center",
+  },
+  calendarOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  calendarCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    paddingBottom: 12,
+  },
+  calendarActions: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  calendarActionBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  calendarActionText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

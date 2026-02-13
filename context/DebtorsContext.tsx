@@ -22,6 +22,8 @@ type DebtorsContextType = {
   interestRate: number;
   setInterestRate: (rate: number) => void;
   addDebtor: (name: string, amount: number, dueDate?: number) => void;
+  removeDebtor: (id: string) => void;
+  addMoreDebt: (id: string, amount: number) => void;
 };
 
 /* ------------------ CONTEXT ------------------ */
@@ -96,8 +98,36 @@ export function DebtorsProvider({ children }: { children: ReactNode }) {
     ]);
   };
 
+  const removeDebtor = (id: string) => {
+    setDebtors((prev) => prev.filter((debtor) => debtor.id !== id));
+  };
+
+  const addMoreDebt = (id: string, amount: number) => {
+    const totalWithInterest = amount * (1 + interestRate / 100);
+    setDebtors((prev) =>
+      prev.map((debtor) =>
+        debtor.id === id
+          ? {
+              ...debtor,
+              amount: debtor.amount + totalWithInterest,
+              status: "Unpaid",
+            }
+          : debtor,
+      ),
+    );
+  };
+
   return (
-    <DebtorsContext.Provider value={{ debtors, addDebtor, interestRate, setInterestRate }}>
+    <DebtorsContext.Provider
+      value={{
+        debtors,
+        addDebtor,
+        removeDebtor,
+        addMoreDebt,
+        interestRate,
+        setInterestRate,
+      }}
+    >
       {children}
     </DebtorsContext.Provider>
   );

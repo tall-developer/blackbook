@@ -1,7 +1,7 @@
 ﻿import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking,
@@ -153,14 +153,11 @@ export default function SettingsScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        stickyHeaderIndices={[0]}
-      >
-        <View
-          style={[styles.stickyHeader, { backgroundColor: theme.background }]}
-        >
-          <Text style={[styles.title, { color: theme.textPrimary }]}>Settings</Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>
+            Settings
+          </Text>
         </View>
 
         <View
@@ -179,7 +176,9 @@ export default function SettingsScreen() {
                 size={22}
                 color={theme.textSecondary}
               />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Interest rate</Text>
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                Interest rate
+              </Text>
             </View>
             <View style={styles.rowRight}>
               <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
@@ -205,7 +204,9 @@ export default function SettingsScreen() {
                 size={22}
                 color={theme.textSecondary}
               />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Notifications</Text>
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                Notifications
+              </Text>
             </View>
             <View style={styles.rowRight}>
               <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
@@ -236,7 +237,9 @@ export default function SettingsScreen() {
                 size={22}
                 color={theme.textSecondary}
               />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Appearance</Text>
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                Appearance
+              </Text>
             </View>
             <Ionicons
               name="chevron-forward-outline"
@@ -262,7 +265,9 @@ export default function SettingsScreen() {
                 size={22}
                 color={theme.textSecondary}
               />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Buy Me a Coffee</Text>
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                Buy Me a Coffee
+              </Text>
             </View>
           </TouchableOpacity>
 
@@ -271,14 +276,20 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={styles.row}
             onPress={() => {
-              Alert.alert("Rate BlackBook", "Thanks for supporting BlackBook app!", [
-                {
-                  text: "Rate Now",
-                  onPress: () =>
-                    Linking.openURL("market://details?id=com.yourcompany.blackbook"),
-                },
-                { text: "Later", style: "cancel" },
-              ]);
+              Alert.alert(
+                "Rate BlackBook",
+                "Thanks for supporting BlackBook app!",
+                [
+                  {
+                    text: "Rate Now",
+                    onPress: () =>
+                      Linking.openURL(
+                        "market://details?id=com.apphatch.blackbook",
+                      ),
+                  },
+                  { text: "Later", style: "cancel" },
+                ],
+              );
             }}
           >
             <View style={styles.rowLeft}>
@@ -287,7 +298,9 @@ export default function SettingsScreen() {
                 size={22}
                 color={theme.textSecondary}
               />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Rate App</Text>
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                Rate App
+              </Text>
             </View>
           </TouchableOpacity>
 
@@ -303,7 +316,9 @@ export default function SettingsScreen() {
                 size={22}
                 color={theme.textSecondary}
               />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>Report a bug</Text>
+              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                Report a bug
+              </Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -312,8 +327,12 @@ export default function SettingsScreen() {
           <Text style={[styles.footerText, { color: theme.textPrimary }]}>
             Made with love by Lindani Grootboom
           </Text>
-          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>Solo Developer • Addo, South Africa</Text>
-          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>v1.0.0</Text>
+          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>
+            Solo Developer • Addo, South Africa
+          </Text>
+          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>
+            v1.0.0
+          </Text>
         </View>
       </ScrollView>
 
@@ -338,7 +357,9 @@ export default function SettingsScreen() {
             style={[styles.modalCard, { backgroundColor: theme.card }]}
             onPress={() => {}}
           >
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Appearance</Text>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Appearance
+            </Text>
 
             <AppearanceOption label="Automatic" icon="settings-outline" />
             <AppearanceOption label="Light" icon="sunny-outline" />
@@ -379,12 +400,22 @@ export default function SettingsScreen() {
             style={[styles.modalCard, { backgroundColor: theme.card }]}
             onPress={() => {}}
           >
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Interest Rate</Text>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Interest Rate
+            </Text>
 
             <View style={styles.sliderWrap}>
               <View style={styles.sliderHeader}>
-                <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>Set rate</Text>
-                <Text style={[styles.sliderValue, { color: theme.textPrimary }]}>{interestRate}%</Text>
+                <Text
+                  style={[styles.sliderLabel, { color: theme.textSecondary }]}
+                >
+                  Set rate
+                </Text>
+                <Text
+                  style={[styles.sliderValue, { color: theme.textPrimary }]}
+                >
+                  {interestRate}%
+                </Text>
               </View>
 
               <View
@@ -399,7 +430,11 @@ export default function SettingsScreen() {
                     { backgroundColor: theme.textPrimary, left: bubbleLeft },
                   ]}
                 >
-                  <Text style={[styles.bubbleText, { color: theme.background }]}>{interestRate}%</Text>
+                  <Text
+                    style={[styles.bubbleText, { color: theme.background }]}
+                  >
+                    {interestRate}%
+                  </Text>
                 </View>
 
                 <Slider
@@ -450,7 +485,9 @@ export default function SettingsScreen() {
             style={[styles.modalCard, { backgroundColor: theme.card }]}
             onPress={() => {}}
           >
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Notifications</Text>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Notifications
+            </Text>
 
             <View style={styles.notifyRow}>
               <Text style={[styles.notifyLabel, { color: theme.textPrimary }]}>
@@ -506,7 +543,9 @@ export default function SettingsScreen() {
                 void Linking.openSettings();
               }}
             >
-              <Text style={[styles.openSettingsText, { color: theme.textPrimary }]}> 
+              <Text
+                style={[styles.openSettingsText, { color: theme.textPrimary }]}
+              >
                 Open Phone Notification Settings
               </Text>
             </TouchableOpacity>
@@ -534,22 +573,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4F5F7",
     paddingHorizontal: 16,
     paddingTop: 8,
-  },
-  scrollContent: {
-    paddingBottom: 32,
+    paddingBottom: 10,
   },
 
   title: {
     fontSize: 28,
     fontWeight: "600",
     color: "#111",
-    marginBottom: 20,
+    marginBottom: 32,
   },
-  stickyHeader: {
-    paddingTop: 0,
-    paddingBottom: 0,
-  },
-
   card: {
     backgroundColor: "#FFF",
     borderRadius: 20,

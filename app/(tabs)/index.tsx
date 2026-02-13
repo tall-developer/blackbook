@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useRouter } from "expo-router";
 import React from "react";
+import { Calendar, DateData } from "react-native-calendars";
 import {
+  Alert,
   Animated,
   FlatList,
   Keyboard,
@@ -19,6 +20,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Rect } from "react-native-svg";
 import { Debtor, useDebtors } from "../../context/DebtorsContext";
@@ -40,6 +42,9 @@ export default function HomeScreen() {
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState<number | undefined>(undefined);
   const [showPicker, setShowPicker] = React.useState(false);
+  const [pendingDueDate, setPendingDueDate] = React.useState<
+    string | undefined
+  >(undefined);
   const [notifEnabled, setNotifEnabled] = React.useState(true);
   const [notifDaysBefore, setNotifDaysBefore] = React.useState(3);
   const translateY = React.useRef(new Animated.Value(0)).current;
@@ -79,6 +84,10 @@ export default function HomeScreen() {
 
   const inputBorder =
     colorScheme === "dark" ? "rgba(252,253,249,0.2)" : "rgba(0,0,0,0.12)";
+  const selectedDueDate = dueDate
+    ? new Date(dueDate).toISOString().split("T")[0]
+    : undefined;
+  const todayDate = new Date().toISOString().split("T")[0];
 
   React.useEffect(() => {
     void loadNotificationSettings();
@@ -233,7 +242,12 @@ export default function HomeScreen() {
                     placeholderTextColor={theme.textSecondary}
                   />
 
-                  <Pressable onPress={() => setShowPicker(true)}>
+                  <Pressable
+                    onPress={() => {
+                      setPendingDueDate(selectedDueDate);
+                      setShowPicker(true);
+                    }}
+                  >
                     <View pointerEvents="none">
                       <TextInput
                         placeholder="Due date"
@@ -256,18 +270,6 @@ export default function HomeScreen() {
                     </View>
                   </Pressable>
 
-                  {showPicker && (
-                    <DateTimePicker
-                      value={dueDate ? new Date(dueDate) : new Date()}
-                      mode="date"
-                      display="default"
-                      onChange={(event, selectedDate) => {
-                        setShowPicker(false);
-                        if (selectedDate) setDueDate(selectedDate.getTime());
-                      }}
-                    />
-                  )}
-
                   <Pressable
                     style={[
                       styles.modalButton,
@@ -289,6 +291,79 @@ export default function HomeScreen() {
             </View>
           </Pressable>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPicker(false)}
+      >
+        <Pressable
+          style={[styles.calendarOverlay, { backgroundColor: "rgba(0,0,0,0.45)" }]}
+          onPress={() => setShowPicker(false)}
+        >
+          <Pressable
+            style={[styles.calendarCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <Calendar
+              current={pendingDueDate ?? selectedDueDate}
+              minDate={todayDate}
+              markedDates={
+                (pendingDueDate ?? selectedDueDate)
+                  ? {
+                      [(pendingDueDate ?? selectedDueDate) as string]: {
+                        selected: true,
+                        selectedColor: theme.primary,
+                      },
+                    }
+                  : undefined
+              }
+              onDayPress={(day: DateData) => {
+                setPendingDueDate(day.dateString);
+              }}
+              theme={{
+                calendarBackground: theme.card,
+                dayTextColor: theme.textPrimary,
+                monthTextColor: theme.textPrimary,
+                arrowColor: theme.primary,
+                textDisabledColor: theme.textSecondary,
+                todayTextColor: theme.primary,
+              }}
+            />
+            <View style={styles.calendarActions}>
+              <Pressable
+                style={[styles.calendarActionBtn, { borderColor: theme.border }]}
+                onPress={() => {
+                  setPendingDueDate(undefined);
+                  setDueDate(undefined);
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={[styles.calendarActionText, { color: theme.textSecondary }]}>
+                  Clear
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.calendarActionBtn,
+                  { backgroundColor: theme.primary, borderColor: theme.primary },
+                ]}
+                onPress={() => {
+                  if (pendingDueDate) {
+                    setDueDate(new Date(`${pendingDueDate}T00:00:00`).getTime());
+                  }
+                  setShowPicker(false);
+                }}
+              >
+                <Text style={[styles.calendarActionText, { color: theme.background }]}>
+                  Done
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -457,6 +532,7 @@ function NormalHome({
   hasAlert: boolean;
 }) {
   const router = useRouter();
+  const { removeDebtor } = useDebtors();
   const { theme } = useTheme();
 
   const total = debtors.reduce((sum, d) => sum + d.amount, 0);
@@ -528,6 +604,31 @@ function NormalHome({
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 120 }}
         renderItem={({ item }) => (
+          <Swipeable
+            overshootRight={false}
+            renderRightActions={() => (
+              <TouchableOpacity
+                style={styles.deleteAction}
+                onPress={() => {
+                  Alert.alert(
+                    "Delete debtor",
+                    `Remove ${item.name} from your list?`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: () => removeDebtor(item.id),
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Ionicons name="trash-outline" size={20} color="#FFF" />
+                <Text style={styles.deleteActionText}>Delete</Text>
+              </TouchableOpacity>
+            )}
+          >
           <TouchableOpacity
             style={[styles.debtorCard, { backgroundColor: theme.card }]}
             onPress={() => router.push(`/debtor/${item.id}`)}
@@ -561,6 +662,7 @@ function NormalHome({
               R{item.amount.toFixed(2)}
             </Text>
           </TouchableOpacity>
+          </Swipeable>
         )}
       />
     </View>
@@ -733,6 +835,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
   },
+  calendarOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  calendarCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    paddingBottom: 12,
+  },
+  calendarActions: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  calendarActionBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  calendarActionText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
   noticeCard: {
     marginHorizontal: 16,
     borderRadius: 18,
@@ -827,6 +956,21 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginHorizontal: 16,
     marginBottom: 12,
+  },
+  deleteAction: {
+    width: 96,
+    marginRight: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    backgroundColor: "#E53935",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  deleteActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
   },
   avatar: {
     width: 42,
