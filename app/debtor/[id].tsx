@@ -19,36 +19,43 @@ import { useTheme } from "../../context/ThemeContext";
 export default function DebtorProfile() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { debtors, recordPayment } = useDebtors();
+  const { debtors, interestRate, recordPayment, startNewLoan } = useDebtors();
   const { theme, colorScheme } = useTheme();
   const insets = useSafeAreaInsets();
   const debtor = id ? debtors.find((d) => d.id === id) : undefined;
   const [showPaymentModal, setShowPaymentModal] = React.useState(false);
+  const [showNewLoanModal, setShowNewLoanModal] = React.useState(false);
   const [paymentAmount, setPaymentAmount] = React.useState("");
+  const [newLoanAmount, setNewLoanAmount] = React.useState("");
 
   const principal =
     debtor && typeof debtor.principalAmount === "number"
       ? debtor.principalAmount
-      : debtor?.amount ?? 0;
+      : (debtor?.amount ?? 0);
   const interestAdded =
     debtor && typeof debtor.interestAdded === "number"
       ? debtor.interestAdded
       : 0;
   const totalOwed = debtor?.amount ?? 0;
-  const totalPaid =
-    debtor?.paymentHistory?.reduce((sum, p) => sum + p.amount, 0) ??
-    debtor?.paidAmount ??
-    0;
+  const totalPaid = debtor?.paidAmount ?? 0;
   const currentBalance = Math.max(0, totalOwed - totalPaid);
   const isPaid = currentBalance === 0;
   const isPartial = !isPaid && totalPaid > 0;
-  const latestPayment =
-    debtor?.paymentHistory?.length
-      ? debtor.paymentHistory[debtor.paymentHistory.length - 1]
-      : undefined;
+  const latestPayment = debtor?.paymentHistory?.length
+    ? debtor.paymentHistory[debtor.paymentHistory.length - 1]
+    : undefined;
   const dueDateText = debtor?.dueDate
     ? new Date(debtor.dueDate).toLocaleDateString()
     : "No due date";
+  const settledDateText = debtor?.settledAt
+    ? new Date(debtor.settledAt).toLocaleDateString()
+    : undefined;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const isDueDateOverdue =
+    currentBalance > 0 && debtor?.dueDate
+      ? new Date(debtor.dueDate).getTime() < todayStart.getTime()
+      : false;
   const statusMeta = isPaid
     ? {
         title: "Paid in Full",
@@ -92,6 +99,18 @@ export default function DebtorProfile() {
     setShowPaymentModal(false);
   }, [debtor, paymentAmount, recordPayment]);
 
+  const handleStartNewLoan = React.useCallback(() => {
+    if (!debtor) return;
+    const parsed = Number(newLoanAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      Alert.alert("Invalid amount", "Enter a valid principal amount.");
+      return;
+    }
+    startNewLoan(debtor.id, parsed);
+    setNewLoanAmount("");
+    setShowNewLoanModal(false);
+  }, [debtor, newLoanAmount, startNewLoan]);
+
   if (!debtor) {
     return (
       <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -129,13 +148,12 @@ export default function DebtorProfile() {
       >
         <View style={styles.headerSection}>
           <View
-            style={[
-              styles.illustrationCircle,
-              { backgroundColor: theme.card },
-            ]}
+            style={[styles.illustrationCircle, { backgroundColor: theme.card }]}
           >
             <Ionicons
-              name={statusMeta.icon as React.ComponentProps<typeof Ionicons>["name"]}
+              name={
+                statusMeta.icon as React.ComponentProps<typeof Ionicons>["name"]
+              }
               size={60}
               color={statusMeta.tone}
             />
@@ -158,13 +176,13 @@ export default function DebtorProfile() {
           ]}
         >
           <DetailRow
-            label="Principal"
+            label="Amount Borrowed"
             value={`R${principal.toFixed(2)}`}
             theme={theme}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <DetailRow
-            label="Interest Added"
+            label="Extra Charge"
             value={`R${interestAdded.toFixed(2)}`}
             theme={theme}
           />
@@ -189,36 +207,70 @@ export default function DebtorProfile() {
             { backgroundColor: theme.card, borderColor: theme.border },
           ]}
         >
-          <DetailRow label="Next Due Date" value={dueDateText} theme={theme} />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <DetailRow
             label="Total Paid"
             value={`R${totalPaid.toFixed(2)}`}
             theme={theme}
           />
+
+          {currentBalance > 0 && (
+            <>
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
+              <DetailRow
+                label="Next Due Date"
+                value={dueDateText}
+                theme={theme}
+                valueColor={isDueDateOverdue ? "#E53935" : theme.textPrimary}
+              />
+            </>
+          )}
+
+          {currentBalance <= 0 && settledDateText && (
+            <>
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
+              <DetailRow
+                label="Settled On"
+                value={settledDateText}
+                theme={theme}
+              />
+            </>
+          )}
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <TouchableOpacity
-          style={[
-            styles.mainButton,
-            { backgroundColor: theme.textPrimary },
-            isPaid && styles.mainButtonDisabled,
-          ]}
-          onPress={() => setShowPaymentModal(true)}
-          disabled={isPaid}
-        >
-          <Text style={[styles.buttonText, { color: theme.background }]}>
-            {isPaid ? "Paid in Full" : "Record Payment"}
-          </Text>
-        </TouchableOpacity>
+      <View
+        style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}
+      >
+        {currentBalance > 0 ? (
+          <TouchableOpacity
+            style={[styles.mainButton, { backgroundColor: theme.textPrimary }]}
+            onPress={() => setShowPaymentModal(true)}
+          >
+            <Text style={[styles.buttonText, { color: theme.background }]}>
+              Record Payment
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.mainButton, { backgroundColor: theme.primary }]}
+            onPress={() => setShowNewLoanModal(true)}
+          >
+            <Text style={[styles.buttonText, { color: theme.background }]}>
+              Start New Loan
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Modal
         visible={showPaymentModal}
         transparent
         animationType="fade"
+        statusBarTranslucent={true}
         onRequestClose={() => setShowPaymentModal(false)}
       >
         <Pressable
@@ -261,7 +313,9 @@ export default function DebtorProfile() {
                 style={[styles.modalBtn, { borderColor: theme.border }]}
                 onPress={() => setShowPaymentModal(false)}
               >
-                <Text style={[styles.modalBtnText, { color: theme.textSecondary }]}>
+                <Text
+                  style={[styles.modalBtnText, { color: theme.textSecondary }]}
+                >
                   Cancel
                 </Text>
               </TouchableOpacity>
@@ -269,8 +323,79 @@ export default function DebtorProfile() {
                 style={[styles.modalBtn, { backgroundColor: theme.primary }]}
                 onPress={handleSubmitPayment}
               >
-                <Text style={[styles.modalBtnText, { color: theme.background }]}>
+                <Text
+                  style={[styles.modalBtnText, { color: theme.background }]}
+                >
                   Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showNewLoanModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowNewLoanModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowNewLoanModal(false)}
+        >
+          <Pressable
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Start New Loan
+            </Text>
+            <Text style={[styles.modalHint, { color: theme.textSecondary }]}>
+              Enter the amount you are lending. We will add {interestRate}% on
+              top.
+            </Text>
+            <TextInput
+              value={newLoanAmount}
+              onChangeText={setNewLoanAmount}
+              keyboardType="numeric"
+              placeholder="Enter loan amount"
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.amountInput,
+                {
+                  color: theme.textPrimary,
+                  borderColor: theme.border,
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? "rgba(252,253,249,0.06)"
+                      : theme.input,
+                },
+              ]}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { borderColor: theme.border }]}
+                onPress={() => setShowNewLoanModal(false)}
+              >
+                <Text
+                  style={[styles.modalBtnText, { color: theme.textSecondary }]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: theme.primary }]}
+                onPress={handleStartNewLoan}
+              >
+                <Text
+                  style={[styles.modalBtnText, { color: theme.background }]}
+                >
+                  Start
                 </Text>
               </TouchableOpacity>
             </View>
@@ -281,11 +406,17 @@ export default function DebtorProfile() {
   );
 }
 
-function DetailRow({ label, value, theme }: any) {
+function DetailRow({ label, value, theme, valueColor }: any) {
   return (
     <View style={styles.detailRow}>
       <Text style={{ color: theme.textSecondary, fontSize: 14 }}>{label}</Text>
-      <Text style={{ color: theme.textPrimary, fontWeight: "600", fontSize: 14 }}>
+      <Text
+        style={{
+          color: valueColor ?? theme.textPrimary,
+          fontWeight: "600",
+          fontSize: 14,
+        }}
+      >
         {value}
       </Text>
     </View>
@@ -336,7 +467,11 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 24,
   },
-  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 },
+  detailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+  },
   divider: { height: 1, width: "100%" },
   sectionTitle: {
     marginHorizontal: 18,
@@ -357,9 +492,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 4,
-  },
-  mainButtonDisabled: {
-    opacity: 0.55,
   },
   buttonText: { fontSize: 16, fontWeight: "700" },
   modalOverlay: {
@@ -409,4 +541,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-

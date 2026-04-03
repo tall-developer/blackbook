@@ -1,14 +1,18 @@
 import { Stack } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View } from "react-native";
+import { useTheme } from "../../context/ThemeContext";
 
 export default function DebtorLayout() {
+  const { theme } = useTheme();
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#F6F7F9" }}>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <Stack
         screenOptions={{
           headerShown: false,
+          contentStyle: { backgroundColor: theme.background },
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }

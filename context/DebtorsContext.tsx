@@ -46,6 +46,7 @@ type DebtorsContextType = {
   ) => { ok: boolean; reason?: "duplicate_name" };
   removeDebtor: (id: string) => void;
   addMoreDebt: (id: string, amount: number) => void;
+  startNewLoan: (id: string, principalAmount: number, dueDate?: number) => void;
   recordPayment: (id: string, amount: number, paidAt?: number) => number;
   undoLastPayment: (id: string) => boolean;
   exportBackup: () => string;
@@ -224,6 +225,31 @@ export function DebtorsProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const startNewLoan = (id: string, principalAmount: number, dueDate?: number) => {
+    if (!principalAmount || principalAmount <= 0) return;
+    const interestAdded = principalAmount * (interestRate / 100);
+    const totalWithInterest = principalAmount + interestAdded;
+
+    setDebtors((prev) =>
+      prev.map((debtor) =>
+        debtor.id === id
+          ? {
+              ...debtor,
+              amount: totalWithInterest,
+              principalAmount,
+              interestAdded,
+              paidAmount: 0,
+              status: "Unpaid",
+              settledAt: undefined,
+              dueDate: new Date(
+                dueDate ?? Date.now() + 7 * 24 * 60 * 60 * 1000,
+              ).toISOString(),
+            }
+          : debtor,
+      ),
+    );
+  };
+
   const recordPayment = (id: string, amount: number, paidAt?: number) => {
     let appliedAmount = 0;
     setDebtors((prev) =>
@@ -366,6 +392,7 @@ export function DebtorsProvider({ children }: { children: ReactNode }) {
         addDebtor,
         removeDebtor,
         addMoreDebt,
+        startNewLoan,
         recordPayment,
         undoLastPayment,
         exportBackup,

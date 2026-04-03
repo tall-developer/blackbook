@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -9,6 +8,7 @@ import {
   Modal,
   Pressable,
   Share,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -31,7 +31,6 @@ export default function SettingsScreen() {
   const { interestRate, setInterestRate, exportBackup, importBackup } =
     useDebtors();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
 
   const [sliderWidth, setSliderWidth] = useState(0);
   const [showAppearance, setShowAppearance] = useState(false);
@@ -149,7 +148,7 @@ export default function SettingsScreen() {
   };
 
   const cardBorder =
-    colorScheme === "dark" ? "rgba(252,253,249,0.12)" : "rgba(0,0,0,0.06)";
+    colorScheme === "dark" ? "rgba(252,253,249,0.20)" : "rgba(0,0,0,0.08)";
 
   const sliderMin = 0;
   const sliderMax = 100;
@@ -208,24 +207,19 @@ export default function SettingsScreen() {
         styles.container,
         {
           backgroundColor: theme.background,
-          paddingTop: insets.top,
-          flex: 1,
+          paddingTop: insets.top + 8,
         },
       ]}
     >
-      <View
-        style={{
-          flex: 1,
-          paddingHorizontal: 16,
-          paddingBottom: tabBarHeight + insets.bottom + 16,
-          justifyContent: "space-between",
-        }}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 60, 80) }}
       >
-        <Text
-          style={[styles.title, { color: theme.textPrimary, marginTop: 24 }]}
-        >
-          Settings
-        </Text>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>
+            Settings
+          </Text>
+        </View>
 
         <View
           style={[
@@ -305,26 +299,27 @@ export default function SettingsScreen() {
           <SettingRow
             icon="cafe-outline"
             label="Buy Me a Coffee"
+            iconColor="#FFAB00"
             onPress={() => openLink(SUPPORT_LINKS.coffee)}
             theme={theme}
           />
         </View>
 
-      </View>
-
-      <View style={[styles.footer, { paddingBottom: 20 }]}>
+        <View style={styles.footer}>
           <Text style={[styles.footerText, { color: theme.textPrimary }]}>
             {"Made with \u2764\uFE0F by Lindani Grootboom"}
           </Text>
           <Text style={[styles.footerSub, { color: theme.textSecondary }]}>
             v1.0.0
           </Text>
-      </View>
+        </View>
+      </ScrollView>
 
       <Modal
         visible={showDataModal}
         transparent
         animationType="fade"
+        statusBarTranslucent={true}
         onRequestClose={() => setShowDataModal(false)}
       >
         <Pressable
@@ -667,11 +662,11 @@ export default function SettingsScreen() {
   );
 }
 
-function SettingRow({ icon, label, value, onPress, theme }: any) {
+function SettingRow({ icon, label, value, onPress, theme, iconColor }: any) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress}>
       <View style={styles.rowLeft}>
-        <Ionicons name={icon} size={22} color={theme.textSecondary} />
+        <Ionicons name={icon} size={22} color={iconColor || theme.textSecondary} />
         <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
           {label}
         </Text>
@@ -694,14 +689,15 @@ function SettingRow({ icon, label, value, onPress, theme }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    paddingHorizontal: 16,
+  },
+  header: {
+    marginBottom: 16,
   },
 
   title: {
     fontSize: 28,
     fontWeight: "600",
-    color: "#111",
-    marginBottom: 32,
   },
   card: {
     backgroundColor: "#FFF",

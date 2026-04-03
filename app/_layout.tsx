@@ -5,7 +5,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { StatusBar } from "expo-status-bar";
+// import { StatusBar } from "expo-status-bar";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
@@ -91,10 +91,6 @@ function AppStack({ showOnboarding }: { showOnboarding: boolean }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <StatusBar
-        style={colorScheme === "dark" ? "light" : "dark"}
-        backgroundColor={theme.background}
-      />
       <Stack
         initialRouteName={showOnboarding ? "onboarding" : "(tabs)"}
         screenOptions={{

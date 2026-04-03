@@ -41,7 +41,12 @@ export default function HomeScreen() {
   const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
   const { debtors, addDebtor, interestRate, hydrated } = useDebtors();
   const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
+  let tabBarHeight = 0;
+  try {
+    tabBarHeight = useBottomTabBarHeight();
+  } catch (e) {
+    tabBarHeight = 0;
+  }
   const totalBottomPadding = tabBarHeight + insets.bottom;
   const hasDebtors = debtors.length > 0;
   const { theme, colorScheme } = useTheme();
@@ -263,18 +268,19 @@ export default function HomeScreen() {
 
       {/* FAB — ONLY after first debtor */}
       {hasDebtors && (
-        <Pressable
+        <TouchableOpacity
           style={[
             styles.fab,
             {
               backgroundColor: theme.primary,
-              bottom: tabBarHeight + 16,
+              bottom: tabBarHeight > 0 ? 16 : insets.bottom + 16,
             },
           ]}
           onPress={() => setShowAddModal(true)}
+          activeOpacity={0.9}
         >
-          <Ionicons name="add" size={28} color={theme.background} />
-        </Pressable>
+          <Ionicons name="add" size={30} color={theme.background} />
+        </TouchableOpacity>
       )}
 
       <Modal
@@ -880,15 +886,23 @@ function NormalHome({
     colorScheme === "dark" ? "rgba(252,253,249,0.10)" : "rgba(0,0,0,0.05)";
   const avatarBorder =
     colorScheme === "dark" ? "rgba(252,253,249,0.24)" : "rgba(0,0,0,0.10)";
+  const [filter, setFilter] = React.useState<"all" | "active" | "overdue">(
+    "all",
+  );
 
-  const total = debtors.reduce((sum, d) => sum + d.amount, 0);
+  const total = debtors.reduce(
+    (sum, d) => sum + Math.max(d.amount - (d.paidAmount || 0), 0),
+    0,
+  );
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const overdueCount = debtors.filter((d) => {
+  const isDebtorOverdue = React.useCallback((d: Debtor) => {
     if (!d.dueDate || d.status === "Settled") return false;
     const due = parseIsoDateSafe(d.dueDate);
     return !!due && toDayStart(due).getTime() < todayStart.getTime();
-  }).length;
+  }, [todayStart]);
+  const overdueCount = debtors.filter(isDebtorOverdue).length;
+  const activeCount = debtors.filter((d) => d.status !== "Settled").length;
   const sortedDebtors = React.useMemo(() => {
     const localTodayStart = new Date();
     localTodayStart.setHours(0, 0, 0, 0);
@@ -915,6 +929,15 @@ function NormalHome({
       return aOverdue ? -1 : 1;
     });
   }, [debtors]);
+  const filteredDebtors = React.useMemo(() => {
+    if (filter === "active") {
+      return sortedDebtors.filter((d) => d.status !== "Settled");
+    }
+    if (filter === "overdue") {
+      return sortedDebtors.filter(isDebtorOverdue);
+    }
+    return sortedDebtors;
+  }, [filter, sortedDebtors, isDebtorOverdue]);
 
   return (
     <View style={[styles.normalWrapper, { backgroundColor: theme.background }]}>
@@ -952,7 +975,7 @@ function NormalHome({
       </Animated.View>
 
       <Animated.FlatList
-        data={sortedDebtors}
+        data={filteredDebtors}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{
           paddingTop: 210,
@@ -964,53 +987,40 @@ function NormalHome({
         )}
         scrollEventThrottle={16}
         ListHeaderComponent={() => (
-          <View style={[styles.metricsRow, { marginTop: 8 }]}>
-            <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-              <Ionicons
-                name="people-outline"
-                size={20}
-                color={theme.textPrimary}
-              />
-              <Text style={[styles.metricValue, { color: theme.textPrimary }]}>
-                {debtors.length}
-              </Text>
-              <Text
-                style={[styles.metricLabel, { color: theme.textSecondary }]}
-              >
-                Debtors
-              </Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-              <Ionicons name="alert-circle-outline" size={20} color="#E53935" />
-              <Text style={[styles.metricValue, styles.overdueText]}>
-                {overdueCount}
-              </Text>
-              <Text
-                style={[styles.metricLabel, { color: theme.textSecondary }]}
-              >
-                Overdue
-              </Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-              <Ionicons
-                name="checkmark-done-outline"
-                size={20}
-                color="#10B981"
-              />
-              <Text style={[styles.metricValue, { color: theme.textPrimary }]}>
-                {debtors.filter((d) => d.status === "Settled").length}
-              </Text>
-              <Text
-                style={[styles.metricLabel, { color: theme.textSecondary }]}
-              >
-                Settled
-              </Text>
-            </View>
+          <View style={styles.metricsRow}>
+            <HomeFilterCard
+              icon="people"
+              label="All"
+              value={debtors.length.toString()}
+              isActive={filter === "all"}
+              onPress={() => setFilter("all")}
+              theme={theme}
+            />
+            <HomeFilterCard
+              icon="timer-outline"
+              label="Active"
+              value={activeCount.toString()}
+              isActive={filter === "active"}
+              onPress={() => setFilter("active")}
+              theme={theme}
+            />
+            <HomeFilterCard
+              icon="alert-circle"
+              label="Overdue"
+              value={overdueCount.toString()}
+              isActive={filter === "overdue"}
+              onPress={() => setFilter("overdue")}
+              theme={theme}
+              isAlert={overdueCount > 0}
+            />
           </View>
         )}
         renderItem={({ item }) => (
           <Swipeable
             overshootRight={false}
+            friction={2}
+            rightThreshold={72}
+            dragOffsetFromRightEdge={28}
             renderRightActions={() => (
               <TouchableOpacity
                 style={styles.deleteAction}
@@ -1088,34 +1098,67 @@ function NormalHome({
   );
 }
 
-function MetricItem({
+function HomeFilterCard({
   icon,
-  value,
   label,
+  value,
   theme,
-  color,
+  isAlert,
+  isActive,
+  onPress,
 }: {
   icon: React.ComponentProps<typeof Ionicons>["name"];
-  value: number;
   label: string;
+  value: string;
   theme: ReturnType<typeof useTheme>["theme"];
-  color?: string;
+  isAlert?: boolean;
+  isActive: boolean;
+  onPress: () => void;
 }) {
   return (
-    <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-      <Ionicons name={icon} size={20} color={color || theme.textPrimary} />
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={[
+        styles.filterCard,
+        {
+          backgroundColor: isActive ? theme.textPrimary : theme.card,
+          borderColor: theme.border,
+          elevation: isActive ? 3 : 0,
+          shadowOpacity: isActive ? 0.12 : 0,
+        },
+      ]}
+    >
+      <View style={styles.filterRow}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color={
+            isActive
+              ? theme.background
+              : isAlert
+                ? "#FF5252"
+                : theme.textSecondary
+          }
+        />
+        <Text
+          style={[
+            styles.filterValue,
+            { color: isActive ? theme.background : theme.textPrimary },
+          ]}
+        >
+          {value}
+        </Text>
+      </View>
       <Text
         style={[
-          styles.metricValue,
-          color ? { color } : { color: theme.textPrimary },
+          styles.filterLabel,
+          { color: isActive ? theme.background : theme.textSecondary },
         ]}
       >
-        {value}
-      </Text>
-      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
         {label}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -1271,15 +1314,18 @@ const styles = StyleSheet.create({
   /* FAB */
   fab: {
     position: "absolute",
-    right: 20,
-    bottom: 30,
+    right: 16,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
-    elevation: 6,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   modalOverlay: {
     flex: 1,
@@ -1477,29 +1523,35 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    gap: 8,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginVertical: 12,
   },
-  metricCard: {
-    backgroundColor: "#FFF",
-    borderRadius: 18,
-    paddingVertical: 16,
-    width: "31%",
+  filterCard: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
   },
-  metricValue: {
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  filterValue: {
     fontSize: 18,
     fontWeight: "700",
-    marginTop: 6,
-    color: "#111",
   },
-  metricLabel: {
-    fontSize: 12,
-    color: "#777",
-    marginTop: 4,
-    textAlign: "center",
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  overdueText: { color: "#E53935" },
 
   debtorCard: {
     flexDirection: "row",

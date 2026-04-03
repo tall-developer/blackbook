@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../context/ThemeContext";
 
 type Debtor = {
   id: string;
@@ -52,17 +53,22 @@ const DEBTORS: Record<string, Debtor> = {
 export default function DebtorProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const debtor = id ? DEBTORS[id] : null;
+  const { theme } = useTheme();
 
   if (!debtor) {
     return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.notFound}>Debtor not found</Text>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.background }]}
+      >
+        <Text style={[styles.notFound, { color: theme.primary }]}>
+          Debtor not found
+        </Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <TouchableOpacity>
           <Ionicons name="chevron-back-circle" size={32} color="#000" />

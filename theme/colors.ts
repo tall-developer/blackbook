@@ -13,7 +13,7 @@ export const DarkTheme = {
   card: "#373B3E",
   textPrimary: "#FCFDF9",
   textSecondary: "#FCFDF9",
-  border: "#373B3E",
+  border: "rgba(252,253,249,0.18)",
   input: "#373B3E",
   primary: "#FCFDF9",
 };
