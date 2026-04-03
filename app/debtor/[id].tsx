@@ -2,336 +2,411 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-  Keyboard,
-  KeyboardAvoidingView,
+  Alert,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDebtors } from "../../context/DebtorsContext";
 import { useTheme } from "../../context/ThemeContext";
 
 export default function DebtorProfile() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { debtors, addMoreDebt, interestRate } = useDebtors();
+  const { debtors, recordPayment } = useDebtors();
   const { theme, colorScheme } = useTheme();
-  const [showAddDebtModal, setShowAddDebtModal] = React.useState(false);
-  const [extraAmount, setExtraAmount] = React.useState("");
-  const [toastMessage, setToastMessage] = React.useState("");
+  const insets = useSafeAreaInsets();
+  const debtor = id ? debtors.find((d) => d.id === id) : undefined;
+  const [showPaymentModal, setShowPaymentModal] = React.useState(false);
+  const [paymentAmount, setPaymentAmount] = React.useState("");
 
-  const debtor = id ? debtors.find((d) => d.id === id) : null;
+  const principal =
+    debtor && typeof debtor.principalAmount === "number"
+      ? debtor.principalAmount
+      : debtor?.amount ?? 0;
+  const interestAdded =
+    debtor && typeof debtor.interestAdded === "number"
+      ? debtor.interestAdded
+      : 0;
+  const totalOwed = debtor?.amount ?? 0;
+  const totalPaid =
+    debtor?.paymentHistory?.reduce((sum, p) => sum + p.amount, 0) ??
+    debtor?.paidAmount ??
+    0;
+  const currentBalance = Math.max(0, totalOwed - totalPaid);
+  const isPaid = currentBalance === 0;
+  const isPartial = !isPaid && totalPaid > 0;
+  const latestPayment =
+    debtor?.paymentHistory?.length
+      ? debtor.paymentHistory[debtor.paymentHistory.length - 1]
+      : undefined;
+  const dueDateText = debtor?.dueDate
+    ? new Date(debtor.dueDate).toLocaleDateString()
+    : "No due date";
+  const statusMeta = isPaid
+    ? {
+        title: "Paid in Full",
+        subtitle: "Balance is fully settled",
+        icon: "checkmark-circle",
+        tone: "#10B981",
+      }
+    : isPartial
+      ? {
+          title: "Partially Paid",
+          subtitle: "Balance is partially paid",
+          icon: "time",
+          tone: "#F59E0B",
+        }
+      : {
+          title: "Unpaid",
+          subtitle: "No payments recorded yet",
+          icon: "alert-circle",
+          tone: "#E53E3E",
+        };
+
+  const handleSubmitPayment = React.useCallback(() => {
+    if (!debtor) return;
+    const parsed = Number(paymentAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      Alert.alert("Invalid amount", "Enter a valid payment amount.");
+      return;
+    }
+    const applied = recordPayment(debtor.id, parsed);
+    if (applied <= 0) {
+      Alert.alert("No payment applied", "This account is already fully paid.");
+      return;
+    }
+    if (applied < parsed) {
+      Alert.alert(
+        "Partial application",
+        `Only R${applied.toFixed(2)} was needed to settle this account.`,
+      );
+    }
+    setPaymentAmount("");
+    setShowPaymentModal(false);
+  }, [debtor, paymentAmount, recordPayment]);
 
   if (!debtor) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        <Text style={[styles.notFound, { color: theme.textPrimary }]}>Debtor not found</Text>
-      </SafeAreaView>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={styles.notFoundWrap}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.notFoundText, { color: theme.textPrimary }]}>
+            Debtor not found
+          </Text>
+        </View>
+      </View>
     );
   }
 
-  const dueText = debtor.dueDate
-    ? new Date(debtor.dueDate).toLocaleDateString()
-    : "No due date";
-  const dividerColor =
-    colorScheme === "dark" ? "rgba(252,253,249,0.22)" : theme.border;
-  const modalInputBorderColor =
-    colorScheme === "dark" ? "rgba(252,253,249,0.26)" : theme.border;
-  const modalInputBg =
-    colorScheme === "dark" ? "rgba(252,253,249,0.06)" : theme.input;
-  const extraAmountValue = Number(extraAmount);
-  const extraAmountWithInterest =
-    Number.isFinite(extraAmountValue) && extraAmountValue > 0
-      ? extraAmountValue * (1 + interestRate / 100)
-      : 0;
-
-  const handleAddMoreDebt = () => {
-    const parsed = Number(extraAmount);
-    if (!parsed || parsed <= 0) return;
-    addMoreDebt(debtor.id, parsed);
-    setToastMessage(
-      `Added R${extraAmountWithInterest.toFixed(2)} (incl ${interestRate}% interest)`,
-    );
-    setExtraAmount("");
-    setShowAddDebtModal(false);
-  };
-
-  React.useEffect(() => {
-    if (!toastMessage) return;
-    const timer = setTimeout(() => setToastMessage(""), 1800);
-    return () => clearTimeout(timer);
-  }, [toastMessage]);
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.inner}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="chevron-back" size={26} color={theme.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>{debtor.name}</Text>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.topBar, { top: Math.max(insets.top, 12) }]}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{ paddingTop: 56, paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerSection}>
+          <View
+            style={[
+              styles.illustrationCircle,
+              { backgroundColor: theme.card },
+            ]}
+          >
+            <Ionicons
+              name={statusMeta.icon as React.ComponentProps<typeof Ionicons>["name"]}
+              size={60}
+              color={statusMeta.tone}
+            />
+          </View>
+          <Text style={[styles.debtorName, { color: theme.textPrimary }]}>
+            {debtor.name}
+          </Text>
+          <Text style={[styles.mainStatus, { color: statusMeta.tone }]}>
+            R{currentBalance.toFixed(2)}
+          </Text>
+          <Text style={[styles.subStatus, { color: theme.textSecondary }]}>
+            {statusMeta.subtitle}
+          </Text>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>{debtor.name}</Text>
-            <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>Current loan</Text>
-            <Text style={[styles.amount, { color: theme.textPrimary }]}>R{debtor.amount.toFixed(2)}</Text>
-            <View style={styles.dueRow}>
-              <Ionicons name="calendar-outline" size={14} color={theme.textSecondary} />
-              <Text style={[styles.dueText, { color: theme.textSecondary }]}>Due {dueText}</Text>
-            </View>
+        <View
+          style={[
+            styles.infoCard,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
+        >
+          <DetailRow
+            label="Principal"
+            value={`R${principal.toFixed(2)}`}
+            theme={theme}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <DetailRow
+            label="Interest Added"
+            value={`R${interestAdded.toFixed(2)}`}
+            theme={theme}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <DetailRow
+            label="Last Payment"
+            value={
+              latestPayment
+                ? `${new Date(latestPayment.paidAt).toLocaleDateString()} \u2022 R${latestPayment.amount.toFixed(2)}`
+                : "No payments yet"
+            }
+            theme={theme}
+          />
+        </View>
 
-            <View style={[styles.divider, { backgroundColor: dividerColor }]} />
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+          Payment Summary
+        </Text>
+        <View
+          style={[
+            styles.infoCard,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
+        >
+          <DetailRow label="Next Due Date" value={dueDateText} theme={theme} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <DetailRow
+            label="Total Paid"
+            value={`R${totalPaid.toFixed(2)}`}
+            theme={theme}
+          />
+        </View>
+      </ScrollView>
 
-            <TouchableOpacity
-              style={styles.addDebtRow}
-              onPress={() => setShowAddDebtModal(true)}
-            >
-              <View style={[styles.addIconCircle, { borderColor: theme.textSecondary }]}>
-                <Ionicons name="add" size={16} color={theme.textSecondary} />
-              </View>
-              <Text style={[styles.addDebtText, { color: theme.textSecondary }]}>Add more debt</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>Payment History</Text>
-            <View style={[styles.historyIconWrap, { backgroundColor: theme.input, borderColor: theme.border }]}>
-              <Ionicons name="cash-outline" size={30} color={theme.textSecondary} />
-            </View>
-            <Text style={[styles.historyText, { color: theme.textSecondary }]}>No payment history yet</Text>
-          </View>
-        </ScrollView>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <TouchableOpacity
+          style={[
+            styles.mainButton,
+            { backgroundColor: theme.textPrimary },
+            isPaid && styles.mainButtonDisabled,
+          ]}
+          onPress={() => setShowPaymentModal(true)}
+          disabled={isPaid}
+        >
+          <Text style={[styles.buttonText, { color: theme.background }]}>
+            {isPaid ? "Paid in Full" : "Record Payment"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <Modal
-        visible={showAddDebtModal}
+        visible={showPaymentModal}
         transparent
-        animationType="slide"
-        statusBarTranslucent={true}
-        onRequestClose={() => setShowAddDebtModal(false)}
+        animationType="fade"
+        onRequestClose={() => setShowPaymentModal(false)}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={-30}
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowPaymentModal(false)}
         >
           <Pressable
-            style={[styles.modalOverlay, { backgroundColor: "rgba(0,0,0,0.6)" }]}
-            onPress={() => setShowAddDebtModal(false)}
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
+            onPress={() => {}}
           >
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={[styles.modalSheet, { backgroundColor: theme.card }]}>
-                  <View
-                    style={[styles.modalHandle, { backgroundColor: theme.border }]}
-                  />
-                  <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
-                    Add more debt
-                  </Text>
-                  <TextInput
-                    placeholder="Amount"
-                    placeholderTextColor={theme.textSecondary}
-                    keyboardType="numeric"
-                    value={extraAmount}
-                    onChangeText={setExtraAmount}
-                    style={[
-                      styles.modalInput,
-                      {
-                        color: theme.textPrimary,
-                        backgroundColor: modalInputBg,
-                        borderColor: modalInputBorderColor,
-                      },
-                    ]}
-                  />
-                  {extraAmountWithInterest > 0 && (
-                    <Text style={[styles.previewText, { color: theme.textSecondary }]}>
-                      Will add R{extraAmountWithInterest.toFixed(2)} (incl {interestRate}%)
-                    </Text>
-                  )}
-                  <Pressable
-                    style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                    onPress={handleAddMoreDebt}
-                  >
-                    <Text style={[styles.modalButtonText, { color: theme.background }]}>
-                      Save
-                    </Text>
-                  </Pressable>
-                </View>
-              </TouchableWithoutFeedback>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Record Payment
+            </Text>
+            <Text style={[styles.modalHint, { color: theme.textSecondary }]}>
+              Remaining: R{currentBalance.toFixed(2)}
+            </Text>
+            <TextInput
+              value={paymentAmount}
+              onChangeText={setPaymentAmount}
+              keyboardType="numeric"
+              placeholder="Enter amount"
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.amountInput,
+                {
+                  color: theme.textPrimary,
+                  borderColor: theme.border,
+                  backgroundColor:
+                    colorScheme === "dark"
+                      ? "rgba(252,253,249,0.06)"
+                      : theme.input,
+                },
+              ]}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { borderColor: theme.border }]}
+                onPress={() => setShowPaymentModal(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: theme.textSecondary }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: theme.primary }]}
+                onPress={handleSubmitPayment}
+              >
+                <Text style={[styles.modalBtnText, { color: theme.background }]}>
+                  Save
+                </Text>
+              </TouchableOpacity>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
+        </Pressable>
       </Modal>
+    </View>
+  );
+}
 
-      {toastMessage ? (
-        <View style={[styles.toast, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.toastText, { color: theme.textPrimary }]}>{toastMessage}</Text>
-        </View>
-      ) : null}
-    </SafeAreaView>
+function DetailRow({ label, value, theme }: any) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={{ color: theme.textSecondary, fontSize: 14 }}>{label}</Text>
+      <Text style={{ color: theme.textPrimary, fontWeight: "600", fontSize: 14 }}>
+        {value}
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  notFoundWrap: {
     flex: 1,
-  },
-  inner: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  header: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
-    marginBottom: 16,
+    justifyContent: "center",
+    paddingHorizontal: 20,
   },
-  headerTitle: {
-    fontSize: 28,
+  notFoundText: {
+    marginTop: 20,
+    fontSize: 18,
     fontWeight: "600",
-    marginLeft: 8,
   },
-  content: {
-    paddingTop: 2,
-    gap: 16,
-    paddingBottom: 32,
+  topBar: {
+    position: "absolute",
+    left: 16,
+    zIndex: 10,
   },
-  card: {
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    width: "100%",
+  backButton: {
+    alignSelf: "flex-start",
+  },
+  headerSection: { alignItems: "center", marginTop: 40, marginBottom: 32 },
+  illustrationCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: "center",
     alignItems: "center",
+    marginBottom: 20,
   },
-  cardTitle: {
+  mainStatus: { fontSize: 32, fontWeight: "700", marginBottom: 4 },
+  debtorName: {
     fontSize: 18,
     fontWeight: "700",
-    textAlign: "center",
-  },
-  cardSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-  },
-  amount: {
-    fontSize: 28,
-    fontWeight: "800",
-    marginTop: 10,
-  },
-  dueRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-  },
-  dueText: {
-    fontSize: 13,
-  },
-  divider: {
-    height: 1,
-    width: "100%",
-    marginVertical: 16,
-    opacity: 0.7,
-  },
-  addDebtRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  addIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addDebtText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  historyIconWrap: {
-    marginTop: 12,
     marginBottom: 8,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
+  },
+  subStatus: { fontSize: 15 },
+  infoCard: {
+    marginHorizontal: 16,
+    borderRadius: 20,
     borderWidth: 1,
+    padding: 18,
+    marginBottom: 24,
   },
-  historyText: {
-    fontSize: 13,
-    textAlign: "center",
+  detailRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 },
+  divider: { height: 1, width: "100%" },
+  sectionTitle: {
+    marginHorizontal: 18,
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 12,
   },
-  notFound: {
-    fontSize: 18,
-    textAlign: "center",
-    marginTop: 50,
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    width: "100%",
+    paddingHorizontal: 20,
+    backgroundColor: "transparent",
   },
+  mainButton: {
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 4,
+  },
+  mainButtonDisabled: {
+    opacity: 0.55,
+  },
+  buttonText: { fontSize: 16, fontWeight: "700" },
   modalOverlay: {
     flex: 1,
-    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
   },
-  modalSheet: {
-    padding: 20,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 12,
+  modalCard: {
+    width: "100%",
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 16,
   },
-  modalInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-  },
-  modalButton: {
-    marginTop: 12,
-    borderRadius: 12,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  previewText: {
-    marginTop: 8,
-    fontSize: 12,
-  },
-  toast: {
-    position: "absolute",
-    bottom: 24,
-    alignSelf: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  toastText: {
+  modalHint: {
+    marginTop: 6,
+    marginBottom: 12,
     fontSize: 13,
+  },
+  amountInput: {
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+  },
+  modalBtn: {
+    minWidth: 86,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  modalBtnText: {
+    fontSize: 14,
     fontWeight: "600",
   },
 });
+

@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import Onboarding from "react-native-onboarding-swiper";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 
 const ONBOARDING_KEY = "bb:onboarding-complete";
@@ -34,6 +35,25 @@ export default function AppOnboarding() {
     void AsyncStorage.setItem(ONBOARDING_KEY, "true");
     router.replace("/(tabs)");
   };
+
+  useEffect(() => {
+    let mounted = true;
+    const checkIfDone = async () => {
+      try {
+        const done = await AsyncStorage.getItem(ONBOARDING_KEY);
+        if (!mounted) return;
+        if (done === "true") {
+          router.replace("/(tabs)");
+        }
+      } catch {
+        // Keep onboarding visible if read fails.
+      }
+    };
+    void checkIfDone();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -89,7 +109,10 @@ export default function AppOnboarding() {
   }, [assetsLoaded, reduceMotionEnabled, fade]);
 
   return (
-    <View style={[styles.container, { backgroundColor: barColor }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: barColor }]}
+      edges={["top", "bottom"]}
+    >
       <Onboarding
         onSkip={complete}
         onDone={complete}
@@ -123,20 +146,6 @@ export default function AppOnboarding() {
             backgroundColor: slideColors[0],
             image: (
               <View style={styles.lottieWrapper}>
-                <Animated.View
-                  style={[
-                    styles.bgCircle,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity: 0.08,
-                      width: getLottieAndCircleSizes(width).circleSize,
-                      height: getLottieAndCircleSizes(width).circleSize,
-                      top: getLottieAndCircleSizes(width).circleTop - 6,
-                      transform: [{ translateY: -6 }],
-                      alignSelf: "center",
-                    },
-                  ]}
-                />
                 <Animated.View style={{ opacity: fade }}>
                   <LottieView
                     autoPlay={!reduceMotionEnabled && assetsLoaded}
@@ -144,8 +153,8 @@ export default function AppOnboarding() {
                     style={[
                       styles.lottie,
                       {
-                        width: getLottieAndCircleSizes(width).lottieSize,
-                        height: getLottieAndCircleSizes(width).lottieSize,
+                        width: getLottieAndCircleSizes(width).lottieSize * 1.3,
+                        height: getLottieAndCircleSizes(width).lottieSize * 1.3,
                       },
                     ]}
                     source={require("../assets/lottie/onboarding-1.json")}
@@ -160,20 +169,6 @@ export default function AppOnboarding() {
             backgroundColor: slideColors[1],
             image: (
               <View style={styles.lottieWrapper}>
-                <Animated.View
-                  style={[
-                    styles.bgCircle,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity: 0.06,
-                      width: getLottieAndCircleSizes(width).circleSize,
-                      height: getLottieAndCircleSizes(width).circleSize,
-                      top: getLottieAndCircleSizes(width).circleTop - 8,
-                      transform: [{ translateY: -8 }],
-                      alignSelf: "center",
-                    },
-                  ]}
-                />
                 <Animated.View style={{ opacity: fade }}>
                   <LottieView
                     autoPlay={!reduceMotionEnabled && assetsLoaded}
@@ -181,8 +176,8 @@ export default function AppOnboarding() {
                     style={[
                       styles.lottie,
                       {
-                        width: getLottieAndCircleSizes(width).lottieSize,
-                        height: getLottieAndCircleSizes(width).lottieSize,
+                        width: getLottieAndCircleSizes(width).lottieSize * 0.8,
+                        height: getLottieAndCircleSizes(width).lottieSize * 0.8,
                       },
                     ]}
                     source={require("../assets/lottie/onboarding-2.json")}
@@ -198,20 +193,6 @@ export default function AppOnboarding() {
             backgroundColor: slideColors[2],
             image: (
               <View style={styles.lottieWrapper}>
-                <Animated.View
-                  style={[
-                    styles.bgCircle,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity: 0.07,
-                      width: getLottieAndCircleSizes(width).circleSize,
-                      height: getLottieAndCircleSizes(width).circleSize,
-                      top: getLottieAndCircleSizes(width).circleTop - 7,
-                      transform: [{ translateY: -7 }],
-                      alignSelf: "center",
-                    },
-                  ]}
-                />
                 <Animated.View style={{ opacity: fade }}>
                   <LottieView
                     autoPlay={!reduceMotionEnabled && assetsLoaded}
@@ -233,7 +214,7 @@ export default function AppOnboarding() {
           },
         ]}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -251,12 +232,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     position: "relative",
   },
-  bgCircle: {
-    position: "absolute",
-    borderRadius: 500,
-  },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "700",
   },
   subtitle: {
@@ -275,8 +252,6 @@ const styles = StyleSheet.create({
 });
 
 function getLottieAndCircleSizes(screenWidth: number) {
-  const lottieSize = Math.round(Math.min(260, screenWidth * 0.72));
-  const circleSize = Math.round(lottieSize * 1.35);
-  const circleTop = Math.round(-lottieSize * 0.12);
-  return { lottieSize, circleSize, circleTop };
+  const lottieSize = Math.round(Math.min(350, screenWidth * 0.9));
+  return { lottieSize };
 }

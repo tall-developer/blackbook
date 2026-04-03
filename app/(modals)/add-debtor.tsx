@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -26,6 +27,15 @@ export default function AddDebtorModal() {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState<number | undefined>(undefined);
+  const [addAlert, setAddAlert] = useState<{
+    type: "none" | "loading" | "error";
+    title: string;
+    message: string;
+  }>({
+    type: "none",
+    title: "",
+    message: "",
+  });
   const [showPicker, setShowPicker] = useState(false);
   const [pendingDueDate, setPendingDueDate] = useState<string | undefined>(
     undefined,
@@ -35,16 +45,35 @@ export default function AddDebtorModal() {
     : undefined;
   const todayDate = new Date().toISOString().split("T")[0];
 
+  const isAddingDebtor = addAlert.type === "loading";
+
   const submit = () => {
-    if (!name || !amount) return;
+    if (!name || !amount || isAddingDebtor) return;
+    const trimmedName = name.trim();
+    const parsedAmount = Number(amount);
+    if (!parsedAmount || Number.isNaN(parsedAmount)) return;
 
-    addDebtor(
-      name.trim(),
-      Number(amount),
-      dueDate, // ✅ number | undefined
-    );
+    setAddAlert({
+      type: "loading",
+      title: "Adding debtor...",
+      message: "Saving details and preparing your record.",
+    });
 
-    router.back();
+    setTimeout(() => {
+      const result = addDebtor(trimmedName, parsedAmount, dueDate);
+      if (!result.ok) {
+        if (result.reason === "duplicate_name") {
+          setAddAlert({
+            type: "error",
+            title: "Duplicate name",
+            message: `"${trimmedName}" already exists. Please use a different name.`,
+          });
+          return;
+        }
+      }
+      setAddAlert({ type: "none", title: "", message: "" });
+      router.back();
+    }, 650);
   };
 
   return (
@@ -146,6 +175,7 @@ export default function AddDebtorModal() {
             <Pressable
               style={[styles.button, { backgroundColor: theme.primary }]}
               onPress={submit}
+              disabled={isAddingDebtor}
             >
               <Text style={[styles.buttonText, { color: theme.background }]}>
                 Save debtor
@@ -177,7 +207,9 @@ export default function AddDebtorModal() {
                   ? {
                       [(pendingDueDate ?? selectedDueDate) as string]: {
                         selected: true,
-                        selectedColor: theme.primary,
+                        selectedColor:
+                          colorScheme === "dark" ? "#2C7A7B" : theme.primary,
+                        selectedTextColor: "#FCFDF9",
                       },
                     }
                   : undefined
@@ -185,15 +217,18 @@ export default function AddDebtorModal() {
               onDayPress={(day: DateData) => {
                 setPendingDueDate(day.dateString);
               }}
-              theme={{
-                calendarBackground: theme.card,
-                dayTextColor: theme.textPrimary,
-                monthTextColor: theme.textPrimary,
-                arrowColor: theme.primary,
-                textDisabledColor: theme.textSecondary,
-                todayTextColor: theme.primary,
-              }}
-            />
+                theme={{
+                  calendarBackground: theme.card,
+                  dayTextColor: theme.textPrimary,
+                  monthTextColor: theme.textPrimary,
+                  arrowColor: theme.primary,
+                  textDisabledColor:
+                    colorScheme === "dark"
+                      ? "rgba(252,253,249,0.28)"
+                      : "#B8C0CC",
+                  todayTextColor: theme.primary,
+                }}
+              />
             <View style={styles.calendarActions}>
               <Pressable
                 style={[styles.calendarActionBtn, { borderColor: theme.border }]}
@@ -224,6 +259,70 @@ export default function AddDebtorModal() {
                 </Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={addAlert.type !== "none"}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (addAlert.type !== "loading") {
+            setAddAlert({ type: "none", title: "", message: "" });
+          }
+        }}
+      >
+        <Pressable
+          style={styles.alertOverlay}
+          onPress={() => {
+            if (addAlert.type !== "loading") {
+              setAddAlert({ type: "none", title: "", message: "" });
+            }
+          }}
+        >
+          <Pressable
+            style={[styles.alertCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <View
+              style={[
+                styles.alertIconCircle,
+                {
+                  backgroundColor:
+                    addAlert.type === "loading"
+                      ? "rgba(56,189,248,0.2)"
+                      : "rgba(234,179,8,0.2)",
+                },
+              ]}
+            >
+              {addAlert.type === "loading" ? (
+                <ActivityIndicator size="small" color="#38BDF8" />
+              ) : (
+                <Text style={styles.warningIcon}>!</Text>
+              )}
+            </View>
+            <Text style={[styles.alertTitle, { color: theme.textPrimary }]}>
+              {addAlert.title}
+            </Text>
+            <Text style={[styles.alertMessage, { color: theme.textSecondary }]}>
+              {addAlert.message}
+            </Text>
+
+            {addAlert.type === "error" ? (
+              <Pressable
+                style={[styles.alertAction, { backgroundColor: theme.primary }]}
+                onPress={() =>
+                  setAddAlert({ type: "none", title: "", message: "" })
+                }
+              >
+                <Text
+                  style={[styles.alertActionText, { color: theme.background }]}
+                >
+                  Try again
+                </Text>
+              </Pressable>
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>
@@ -277,6 +376,56 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 16,
     textAlign: "center",
+  },
+  alertOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 22,
+  },
+  alertCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  alertIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  warningIcon: {
+    fontSize: 24,
+    lineHeight: 26,
+    fontWeight: "700",
+    color: "#EAB308",
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  alertMessage: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  alertAction: {
+    marginTop: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  alertActionText: {
+    fontSize: 14,
+    fontWeight: "700",
   },
   calendarOverlay: {
     flex: 1,

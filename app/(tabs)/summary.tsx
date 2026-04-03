@@ -1,13 +1,23 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Debtor, useDebtors } from "../../context/DebtorsContext";
 import { useTheme } from "../../context/ThemeContext";
+import { parseIsoDateSafe, toDayStart } from "../../utils/date";
 
 export default function SummaryScreen() {
-  const { debtors, interestRate } = useDebtors();
+  const { debtors, interestRate, hydrated } = useDebtors();
   const { theme, colorScheme } = useTheme();
+  const router = useRouter();
+  const [showSkeleton, setShowSkeleton] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    const timer = setTimeout(() => setShowSkeleton(false), 500);
+    return () => clearTimeout(timer);
+  }, [hydrated]);
 
   const totalBalance = debtors.reduce((sum, d) => sum + (d.amount || 0), 0);
   const principal =
@@ -19,8 +29,18 @@ export default function SummaryScreen() {
   const overdueCount = debtors.filter((d: Debtor) => {
     const hasDueDate = !!d.dueDate;
     const isSettled = d.status === "Settled";
-    return hasDueDate && new Date(d.dueDate!) < new Date() && !isSettled;
+    if (!hasDueDate || isSettled) return false;
+    const due = parseIsoDateSafe(d.dueDate!);
+    if (!due) return false;
+    const dueStart = toDayStart(due);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return dueStart.getTime() < todayStart.getTime();
   }).length;
+
+  if (!hydrated || showSkeleton) {
+    return <SummarySkeleton />;
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}> 
@@ -35,14 +55,21 @@ export default function SummaryScreen() {
         <Text style={[styles.totalAmount, { color: theme.textPrimary }]}> 
           R{totalBalance.toFixed(2)}
         </Text>
-        <Text
-          style={[
-            styles.totalSub,
-            { color: theme.textSecondary, opacity: 0.6 },
-          ]}
-        >
-          Includes R{interest.toFixed(2)} interest
-        </Text>
+        <View style={styles.totalSubRow}>
+          <Ionicons
+            name="sparkles-outline"
+            size={14}
+            color={theme.textSecondary}
+          />
+          <Text
+            style={[
+              styles.totalSub,
+              { color: theme.textSecondary, opacity: 0.6 },
+            ]}
+          >
+            Includes R{interest.toFixed(2)} interest
+          </Text>
+        </View>
       </View>
 
       <View style={styles.metricsRow}>
@@ -110,11 +137,71 @@ export default function SummaryScreen() {
         </View>
       </View>
 
-      <Pressable style={[styles.primaryButton, { backgroundColor: theme.primary }]}> 
+            <Pressable
+        style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+        onPress={() =>
+          router.push({
+            pathname: "/",
+            params: { openAdd: "1" },
+          })
+        }
+      >
         <Text style={[styles.primaryButtonText, { color: theme.background }]}> 
-          + Record Payment
+          + Add New Debtor
         </Text>
       </Pressable>
+    </SafeAreaView>
+  );
+}
+
+function SummarySkeleton() {
+  const { theme, colorScheme } = useTheme();
+  const router = useRouter();
+  const pulse = React.useRef(new Animated.Value(0.55)).current;
+  const skeletonBase =
+    colorScheme === "dark" ? "rgba(252,253,249,0.12)" : "rgba(0,0,0,0.08)";
+
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.55,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Animated.View
+        style={[styles.skeletonTitle, { backgroundColor: skeletonBase, opacity: pulse }]}
+      />
+      <Animated.View
+        style={[styles.skeletonTotalCard, { backgroundColor: skeletonBase, opacity: pulse }]}
+      />
+      <View style={styles.metricsRow}>
+        <Animated.View
+          style={[styles.skeletonMetricCard, { backgroundColor: skeletonBase, opacity: pulse }]}
+        />
+        <Animated.View
+          style={[styles.skeletonMetricCard, { backgroundColor: skeletonBase, opacity: pulse }]}
+        />
+        <Animated.View
+          style={[styles.skeletonMetricCard, { backgroundColor: skeletonBase, opacity: pulse }]}
+        />
+      </View>
+      <Animated.View
+        style={[styles.skeletonButton, { backgroundColor: skeletonBase, opacity: pulse }]}
+      />
     </SafeAreaView>
   );
 }
@@ -128,6 +215,27 @@ const styles = StyleSheet.create({
   },
   header: { marginBottom: 16 },
   title: { fontSize: 28, fontWeight: "600", color: "#111" },
+  skeletonTitle: {
+    width: 120,
+    height: 34,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  skeletonTotalCard: {
+    borderRadius: 20,
+    height: 165,
+    marginBottom: 16,
+  },
+  skeletonMetricCard: {
+    borderRadius: 18,
+    height: 118,
+    width: "31%",
+  },
+  skeletonButton: {
+    marginTop: 8,
+    borderRadius: 18,
+    height: 48,
+  },
   totalCard: {
     backgroundColor: "#FFF",
     borderRadius: 20,
@@ -142,7 +250,13 @@ const styles = StyleSheet.create({
     marginVertical: 6,
     color: "#111",
   },
-  totalSub: { color: "#777", fontSize: 13, marginTop: 16 },
+  totalSub: { color: "#777", fontSize: 13 },
+  totalSubRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   metricsRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -196,3 +310,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+
+
+

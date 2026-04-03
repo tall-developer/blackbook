@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <defs>
+        <!-- Mask to remove right inner half -->
+        <mask id="cutout">
+            <!-- Full visible -->
+            <rect width="512" height="512" fill="white"/>
+
+            <!-- Remove right inner half -->
+            <path d="
+          M256 86
+          A170 170 0 0 1 256 426
+          Z
+        " fill="black" />
+        </mask>
+    </defs>
+
+    <!-- Main circle -->
+    <circle cx="256" cy="256" r="240" fill="#1C1C1C" mask="url(#cutout)" />
+
+    <!-- Left filled half -->
+    <path d="
+      M256 16
+      A240 240 0 0 0 256 496
+      Z
+    " fill="#1C1C1C" />r
+</svg>

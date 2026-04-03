@@ -5,19 +5,30 @@ import {
 } from "@expo-google-fonts/inter";
 import React from "react";
 import { StyleSheet, Text } from "react-native";
+import { useTheme } from "../../context/ThemeContext";
 
 /* ------------------ COMPONENT ------------------ */
 
+type BlackbookLogoProps = {
+  size?: number;
+  blackColor?: string;
+  bookColor?: string;
+};
 
 export default function BlackbookLogo({
   size = 40,
-  blackColor = "#CFCFCF",
-  bookColor = "#000",
-}) {
+  blackColor,
+  bookColor,
+}: BlackbookLogoProps) {
+  const { colorScheme } = useTheme();
   let [fontsLoaded] = useFonts({
     Inter_800ExtraBold,
     Inter_400Regular,
   });
+
+  const resolvedBlackColor = blackColor ?? "#CFCFCF";
+  const resolvedBookColor =
+    bookColor ?? (colorScheme === "dark" ? "#FCFDF9" : "#000000");
 
   if (!fontsLoaded) {
     return null;
@@ -25,8 +36,8 @@ export default function BlackbookLogo({
 
   return (
     <Text style={[styles.logo, { fontSize: size }]}>
-      <Text style={[styles.bold, { color: blackColor }]}>black</Text>
-      <Text style={[styles.regular, { color: bookColor }]}>book</Text>
+      <Text style={[styles.bold, { color: resolvedBlackColor }]}>black</Text>
+      <Text style={[styles.regular, { color: resolvedBookColor }]}>book</Text>
     </Text>
   );
 }

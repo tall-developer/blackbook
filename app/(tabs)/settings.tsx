@@ -1,20 +1,23 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking,
   Modal,
   Pressable,
-  ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import DarkThemeFilledIcon from "../../components/icons/DarkThemeFilledIcon";
 import { useDebtors } from "../../context/DebtorsContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -25,12 +28,18 @@ const NOTIF_DAYS_KEY = "bb:notif-days-before";
 
 export default function SettingsScreen() {
   const { mode, setMode, theme, colorScheme } = useTheme();
-  const { interestRate, setInterestRate } = useDebtors();
+  const { interestRate, setInterestRate, exportBackup, importBackup } =
+    useDebtors();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
 
   const [sliderWidth, setSliderWidth] = useState(0);
   const [showAppearance, setShowAppearance] = useState(false);
   const [showInterestModal, setShowInterestModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [showDataModal, setShowDataModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoreText, setRestoreText] = useState("");
 
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [notifDaysBefore, setNotifDaysBefore] = useState(3);
@@ -91,20 +100,60 @@ export default function SettingsScreen() {
   };
 
   const openLink = async (url: string) => {
-    const supported = await Linking.canOpenURL(url);
-    if (!supported) {
-      Alert.alert("Error", "Unable to open this link");
-      return;
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert("Error", "Unable to open this link");
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Error", "Unable to open this link right now.");
     }
-    await Linking.openURL(url);
+  };
+
+  const onExportBackup = async () => {
+    try {
+      const payload = exportBackup();
+      await Share.share({
+        message: payload,
+        title: "BlackBook Backup",
+      });
+    } catch {
+      Alert.alert("Export failed", "Could not export backup.");
+    }
+  };
+
+  const onRestoreBackup = () => {
+    Alert.alert(
+      "Replace current data?",
+      "Restoring a backup will overwrite your current debtors and settings.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          style: "destructive",
+          onPress: () => {
+            const result = importBackup(restoreText);
+            if (!result.ok) {
+              Alert.alert("Restore failed", result.error ?? "Invalid backup.");
+              return;
+            }
+            setShowRestoreModal(false);
+            setRestoreText("");
+            Alert.alert("Restore complete", "Backup imported successfully.");
+          },
+        },
+      ],
+    );
   };
 
   const cardBorder =
     colorScheme === "dark" ? "rgba(252,253,249,0.12)" : "rgba(0,0,0,0.06)";
 
   const sliderMin = 0;
-  const sliderMax = 50;
-  const sliderStep = 5;
+  const sliderMax = 100;
+  const sliderStep = 10;
   const bubbleWidth = 46;
   const bubbleLeft =
     sliderWidth > 0
@@ -117,7 +166,7 @@ export default function SettingsScreen() {
     icon,
   }: {
     label: AppearanceMode;
-    icon: keyof typeof Ionicons.glyphMap;
+    icon: keyof typeof Ionicons.glyphMap | "dark-theme-filled";
   }) => {
     const selected = appearance === label;
 
@@ -132,7 +181,11 @@ export default function SettingsScreen() {
         }}
       >
         <View style={styles.optionLeft}>
-          <Ionicons name={icon} size={22} color={theme.textSecondary} />
+          {icon === "dark-theme-filled" ? (
+            <DarkThemeFilledIcon size={22} color={theme.textSecondary} />
+          ) : (
+            <Ionicons name={icon} size={22} color={theme.textSecondary} />
+          )}
           <Text style={[styles.optionLabel, { color: theme.textPrimary }]}>
             {label}
           </Text>
@@ -150,15 +203,29 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.background }]}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.background,
+          paddingTop: insets.top,
+          flex: 1,
+        },
+      ]}
     >
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>
-            Settings
-          </Text>
-        </View>
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: 16,
+          paddingBottom: tabBarHeight + insets.bottom + 16,
+          justifyContent: "space-between",
+        }}
+      >
+        <Text
+          style={[styles.title, { color: theme.textPrimary, marginTop: 24 }]}
+        >
+          Settings
+        </Text>
 
         <View
           style={[
@@ -166,175 +233,155 @@ export default function SettingsScreen() {
             { backgroundColor: theme.card, borderColor: cardBorder },
           ]}
         >
-          <TouchableOpacity
-            style={styles.row}
+          <SettingRow
+            icon="trending-up-outline"
+            label="Interest rate"
+            value={`${interestRate}%`}
             onPress={() => setShowInterestModal(true)}
-          >
-            <View style={styles.rowLeft}>
-              <Ionicons
-                name="trending-up-outline"
-                size={22}
-                color={theme.textSecondary}
-              />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
-                Interest rate
-              </Text>
-            </View>
-            <View style={styles.rowRight}>
-              <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
-                {interestRate}%
-              </Text>
-              <Ionicons
-                name="chevron-forward-outline"
-                size={20}
-                color={theme.textSecondary}
-              />
-            </View>
-          </TouchableOpacity>
-
+            theme={theme}
+          />
           <View style={[styles.divider, { backgroundColor: cardBorder }]} />
-
-          <TouchableOpacity
-            style={styles.row}
+          <SettingRow
+            icon="notifications-outline"
+            label="Notifications"
+            value={notifEnabled ? "On" : "Off"}
             onPress={() => setShowNotificationsModal(true)}
-          >
-            <View style={styles.rowLeft}>
-              <Ionicons
-                name="notifications-outline"
-                size={22}
-                color={theme.textSecondary}
-              />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
-                Notifications
-              </Text>
-            </View>
-            <View style={styles.rowRight}>
-              <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
-                {notifEnabled ? `${notifDaysBefore}d` : "Off"}
-              </Text>
-              <Ionicons
-                name="chevron-forward-outline"
-                size={20}
-                color={theme.textSecondary}
-              />
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: theme.card, borderColor: cardBorder },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => setShowAppearance(true)}
-          >
-            <View style={styles.rowLeft}>
-              <Ionicons
-                name="moon-outline"
-                size={22}
-                color={theme.textSecondary}
-              />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
-                Appearance
-              </Text>
-            </View>
-            <Ionicons
-              name="chevron-forward-outline"
-              size={20}
-              color={theme.textSecondary}
-            />
-          </TouchableOpacity>
-        </View>
-
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: theme.card, borderColor: cardBorder },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => openLink(SUPPORT_LINKS.coffee)}
-          >
-            <View style={styles.rowLeft}>
-              <Ionicons
-                name="help-circle-outline"
-                size={22}
-                color={theme.textSecondary}
-              />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
-                Buy Me a Coffee
-              </Text>
-            </View>
-          </TouchableOpacity>
-
+            theme={theme}
+          />
           <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+          <SettingRow
+            icon="color-palette-outline"
+            label="Appearance"
+            value={appearance}
+            onPress={() => setShowAppearance(true)}
+            theme={theme}
+          />
+        </View>
 
-          <TouchableOpacity
-            style={styles.row}
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.card, borderColor: cardBorder },
+          ]}
+        >
+          <SettingRow
+            icon="server-outline"
+            label="Data & Backup"
+            onPress={() => setShowDataModal(true)}
+            theme={theme}
+          />
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.card, borderColor: cardBorder },
+          ]}
+        >
+          <SettingRow
+            icon="star-outline"
+            label="Rate & Support"
             onPress={() => {
               Alert.alert(
-                "Rate BlackBook",
-                "Thanks for supporting BlackBook app!",
+                "Support",
+                "How can we help?",
                 [
                   {
-                    text: "Rate Now",
-                    onPress: () =>
-                      Linking.openURL(
-                        "market://details?id=com.apphatch.blackbook",
-                      ),
+                    text: "Report a Bug",
+                    onPress: () => openLink(SUPPORT_LINKS.email),
                   },
-                  { text: "Later", style: "cancel" },
+                  {
+                    text: "Rate App",
+                    onPress: () =>
+                      openLink("market://details?id=com.apphatch.blackbook"),
+                  },
+                  { text: "Cancel", style: "cancel" },
                 ],
               );
             }}
-          >
-            <View style={styles.rowLeft}>
-              <Ionicons
-                name="mail-outline"
-                size={22}
-                color={theme.textSecondary}
-              />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
-                Rate App
-              </Text>
-            </View>
-          </TouchableOpacity>
-
+            theme={theme}
+          />
           <View style={[styles.divider, { backgroundColor: cardBorder }]} />
-
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => openLink(SUPPORT_LINKS.email)}
-          >
-            <View style={styles.rowLeft}>
-              <Ionicons
-                name="bug-outline"
-                size={22}
-                color={theme.textSecondary}
-              />
-              <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
-                Report a bug
-              </Text>
-            </View>
-          </TouchableOpacity>
+          <SettingRow
+            icon="cafe-outline"
+            label="Buy Me a Coffee"
+            onPress={() => openLink(SUPPORT_LINKS.coffee)}
+            theme={theme}
+          />
         </View>
 
-        <View style={styles.footer}>
+      </View>
+
+      <View style={[styles.footer, { paddingBottom: 20 }]}>
           <Text style={[styles.footerText, { color: theme.textPrimary }]}>
-            Made with love by Lindani Grootboom
-          </Text>
-          <Text style={[styles.footerSub, { color: theme.textSecondary }]}>
-            Solo Developer • Addo, South Africa
+            {"Made with \u2764\uFE0F by Lindani Grootboom"}
           </Text>
           <Text style={[styles.footerSub, { color: theme.textSecondary }]}>
             v1.0.0
           </Text>
-        </View>
-      </ScrollView>
+      </View>
+
+      <Modal
+        visible={showDataModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDataModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowDataModal(false)}
+        >
+          <View style={[styles.modalCard, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Data & Backup
+            </Text>
+            <TouchableOpacity style={styles.optionRow} onPress={onExportBackup}>
+              <View style={styles.optionLeft}>
+                <Ionicons
+                  name="share-outline"
+                  size={22}
+                  color={theme.textSecondary}
+                />
+                <Text
+                  style={[styles.optionLabel, { color: theme.textPrimary }]}
+                >
+                  Export Backup
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                setShowDataModal(false);
+                setShowRestoreModal(true);
+              }}
+            >
+              <View style={styles.optionLeft}>
+                <Ionicons
+                  name="download-outline"
+                  size={22}
+                  color={theme.textSecondary}
+                />
+                <Text
+                  style={[styles.optionLabel, { color: theme.textPrimary }]}
+                >
+                  Restore Backup
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.primary }]}
+              onPress={() => setShowDataModal(false)}
+            >
+              <Text
+                style={[styles.closeButtonText, { color: theme.background }]}
+              >
+                Close
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={showAppearance}
@@ -361,7 +408,7 @@ export default function SettingsScreen() {
               Appearance
             </Text>
 
-            <AppearanceOption label="Automatic" icon="settings-outline" />
+            <AppearanceOption label="Automatic" icon="dark-theme-filled" />
             <AppearanceOption label="Light" icon="sunny-outline" />
             <AppearanceOption label="Dark" icon="moon-outline" />
 
@@ -563,17 +610,91 @@ export default function SettingsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </SafeAreaView>
+
+      <Modal
+        visible={showRestoreModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowRestoreModal(false)}
+      >
+        <Pressable
+          style={[
+            styles.modalOverlay,
+            {
+              backgroundColor:
+                colorScheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)",
+            },
+          ]}
+          onPress={() => setShowRestoreModal(false)}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Restore Backup
+            </Text>
+            <TextInput
+              multiline
+              value={restoreText}
+              onChangeText={setRestoreText}
+              placeholder="Paste backup JSON here"
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.restoreInput,
+                {
+                  borderColor: cardBorder,
+                  color: theme.textPrimary,
+                  backgroundColor: theme.input,
+                },
+              ]}
+            />
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.primary }]}
+              onPress={onRestoreBackup}
+            >
+              <Text
+                style={[styles.closeButtonText, { color: theme.background }]}
+              >
+                Restore
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
+function SettingRow({ icon, label, value, onPress, theme }: any) {
+  return (
+    <TouchableOpacity style={styles.row} onPress={onPress}>
+      <View style={styles.rowLeft}>
+        <Ionicons name={icon} size={22} color={theme.textSecondary} />
+        <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+          {label}
+        </Text>
+      </View>
+      <View style={styles.rowRight}>
+        {value ? (
+          <Text style={[styles.rateValue, { color: theme.textSecondary }]}>
+            {value}
+          </Text>
+        ) : null}
+        <Ionicons
+          name="chevron-forward-outline"
+          size={20}
+          color={theme.textSecondary}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F4F5F7",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
   },
 
   title: {
@@ -661,7 +782,6 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     paddingTop: 16,
-    paddingBottom: 24,
   },
 
   footerText: {
@@ -754,5 +874,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
+  },
+  restoreInput: {
+    minHeight: 140,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    textAlignVertical: "top",
+    fontSize: 13,
   },
 });

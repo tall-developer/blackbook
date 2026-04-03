@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { Calendar, DateData } from "react-native-calendars";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
-  FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -20,11 +20,16 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { Calendar, DateData } from "react-native-calendars";
 import { Swipeable } from "react-native-gesture-handler";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import Svg, { Circle, Line, Rect } from "react-native-svg";
 import { Debtor, useDebtors } from "../../context/DebtorsContext";
 import { useTheme } from "../../context/ThemeContext";
+import { parseIsoDateSafe, toDayStart } from "../../utils/date";
 import BlackbookLogo from "../components/BlackbookLogo";
 
 /* ---------------- HOME ---------------- */
@@ -33,7 +38,11 @@ export default function HomeScreen() {
   const NOTIF_ENABLED_KEY = "bb:notif-enabled";
   const NOTIF_DAYS_KEY = "bb:notif-days-before";
   const router = useRouter();
-  const { debtors, addDebtor } = useDebtors();
+  const { openAdd } = useLocalSearchParams<{ openAdd?: string }>();
+  const { debtors, addDebtor, interestRate, hydrated } = useDebtors();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const totalBottomPadding = tabBarHeight + insets.bottom;
   const hasDebtors = debtors.length > 0;
   const { theme, colorScheme } = useTheme();
   const [showAddModal, setShowAddModal] = React.useState(false);
@@ -42,12 +51,28 @@ export default function HomeScreen() {
   const [amount, setAmount] = React.useState("");
   const [dueDate, setDueDate] = React.useState<number | undefined>(undefined);
   const [showPicker, setShowPicker] = React.useState(false);
+  const [addAlert, setAddAlert] = React.useState<{
+    type: "none" | "loading" | "error";
+    title: string;
+    message: string;
+  }>({
+    type: "none",
+    title: "",
+    message: "",
+  });
   const [pendingDueDate, setPendingDueDate] = React.useState<
     string | undefined
   >(undefined);
+  const [addToastMessage, setAddToastMessage] = React.useState("");
   const [notifEnabled, setNotifEnabled] = React.useState(true);
   const [notifDaysBefore, setNotifDaysBefore] = React.useState(3);
   const translateY = React.useRef(new Animated.Value(0)).current;
+  const [showSkeleton, setShowSkeleton] = React.useState(true);
+  const normalizeDebtorName = React.useCallback(
+    (value: string) =>
+      value.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " "),
+    [],
+  );
 
   const loadNotificationSettings = React.useCallback(async () => {
     try {
@@ -67,14 +92,71 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const submit = () => {
-    if (!name || !amount) return;
+  const isAddingDebtor = addAlert.type === "loading";
+  const isDuplicate = React.useMemo(() => {
+    if (!name.trim()) return false;
+    const normalizedNewName = normalizeDebtorName(name);
+    return debtors.some(
+      (d) => normalizeDebtorName(d.name) === normalizedNewName,
+    );
+  }, [name, debtors, normalizeDebtorName]);
 
-    addDebtor(name.trim(), Number(amount), dueDate);
-    setName("");
-    setAmount("");
-    setDueDate(undefined);
-    setShowAddModal(false);
+  const submit = () => {
+    if (!name || !amount || isAddingDebtor) return;
+    const parsedAmount = Number(amount);
+    if (!parsedAmount || Number.isNaN(parsedAmount)) return;
+
+    const cleanedName = name.trim();
+    const normalizedNewName = normalizeDebtorName(cleanedName);
+    const duplicateExists = debtors.some(
+      (d) => normalizeDebtorName(d.name) === normalizedNewName,
+    );
+    if (duplicateExists) {
+      setAddAlert({
+        type: "error",
+        title: "Duplicate name",
+        message: `"${cleanedName}" already exists. Please use a different name.`,
+      });
+      return;
+    }
+    const collectedDateMs = dueDate ?? Date.now() + 7 * 24 * 60 * 60 * 1000;
+    const collectedDateText = new Date(collectedDateMs).toLocaleDateString(
+      "en-GB",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      },
+    );
+
+    setAddAlert({
+      type: "loading",
+      title: "Adding debtor...",
+      message: "Saving details and preparing your record.",
+    });
+    setTimeout(() => {
+      const result = addDebtor(cleanedName, parsedAmount, dueDate);
+      setAddAlert({ type: "none", title: "", message: "" });
+      if (!result.ok) {
+        if (result.reason === "duplicate_name") {
+          setAddAlert({
+            type: "error",
+            title: "Duplicate name",
+            message: `"${cleanedName}" already exists. Please use a different name.`,
+          });
+        } else {
+          Alert.alert("Unable to save debtor", "Please try again.");
+        }
+        return;
+      }
+      setAddToastMessage(
+        `${cleanedName} owes you R${parsedAmount.toFixed(2)}+${interestRate}%. To be collected on ${collectedDateText}`,
+      );
+      setName("");
+      setAmount("");
+      setDueDate(undefined);
+      setShowAddModal(false);
+    }, 650);
   };
 
   const closeAddModal = () => {
@@ -94,6 +176,12 @@ export default function HomeScreen() {
   }, [loadNotificationSettings]);
 
   React.useEffect(() => {
+    if (openAdd !== "1") return;
+    setShowAddModal(true);
+    router.replace("/");
+  }, [openAdd, router]);
+
+  React.useEffect(() => {
     if (showNotifications) {
       void loadNotificationSettings();
     }
@@ -103,21 +191,32 @@ export default function HomeScreen() {
   const now = new Date();
   const upcomingDebtors = !notifEnabled
     ? []
-    : debtors.filter(
-    (d): d is Debtor & { dueDate: string } => {
-      if (!d.dueDate || d.status === "Settled") return false;
-      const due = new Date(d.dueDate);
-      const diffMs = due.getTime() - now.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-      return diffDays >= 0 && diffDays <= daysAhead;
-    },
-  );
+    : debtors.filter((d): d is Debtor & { dueDate: string } => {
+        if (!d.dueDate || d.status === "Settled") return false;
+        const due = parseIsoDateSafe(d.dueDate);
+        if (!due) return false;
+        const diffMs = due.getTime() - now.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        return diffDays >= 0 && diffDays <= daysAhead;
+      });
 
   React.useEffect(() => {
     if (showAddModal) {
       translateY.setValue(0);
     }
   }, [showAddModal, translateY]);
+
+  React.useEffect(() => {
+    if (!addToastMessage) return;
+    const timer = setTimeout(() => setAddToastMessage(""), 2600);
+    return () => clearTimeout(timer);
+  }, [addToastMessage]);
+
+  React.useEffect(() => {
+    if (!hydrated) return;
+    const timer = setTimeout(() => setShowSkeleton(false), 500);
+    return () => clearTimeout(timer);
+  }, [hydrated]);
 
   const panResponder = React.useRef(
     PanResponder.create({
@@ -138,8 +237,13 @@ export default function HomeScreen() {
     }),
   ).current;
 
+  if (!hydrated || showSkeleton) {
+    return <HomeSkeleton />;
+  }
+
   return (
     <SafeAreaView
+      edges={["top"]}
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       {!hasDebtors ? (
@@ -153,13 +257,20 @@ export default function HomeScreen() {
           debtors={debtors}
           onNotifications={() => setShowNotifications(true)}
           hasAlert={notifEnabled && upcomingDebtors.length > 0}
+          listBottomPadding={totalBottomPadding}
         />
       )}
 
       {/* FAB — ONLY after first debtor */}
       {hasDebtors && (
         <Pressable
-          style={[styles.fab, { backgroundColor: theme.primary }]}
+          style={[
+            styles.fab,
+            {
+              backgroundColor: theme.primary,
+              bottom: tabBarHeight + 16,
+            },
+          ]}
           onPress={() => setShowAddModal(true)}
         >
           <Ionicons name="add" size={28} color={theme.background} />
@@ -219,12 +330,25 @@ export default function HomeScreen() {
                       {
                         backgroundColor: theme.input,
                         color: theme.textPrimary,
-                        borderColor: inputBorder,
+                        borderColor: isDuplicate ? "#E53935" : inputBorder,
                       },
                     ]}
                     placeholderTextColor={theme.textSecondary}
                     autoFocus
                   />
+
+                  {isDuplicate && (
+                    <Text
+                      style={{
+                        color: "#E53935",
+                        fontSize: 12,
+                        marginBottom: 8,
+                        marginLeft: 4,
+                      }}
+                    >
+                      This name is already in your Black Book.
+                    </Text>
+                  )}
 
                   <TextInput
                     placeholder="Amount owed"
@@ -274,8 +398,11 @@ export default function HomeScreen() {
                     style={[
                       styles.modalButton,
                       { backgroundColor: theme.primary },
+                      (isAddingDebtor || isDuplicate || !name || !amount) &&
+                        styles.modalButtonDisabled,
                     ]}
                     onPress={submit}
+                    disabled={isAddingDebtor || isDuplicate || !name || !amount}
                   >
                     <Text
                       style={[
@@ -294,13 +421,79 @@ export default function HomeScreen() {
       </Modal>
 
       <Modal
+        visible={addAlert.type !== "none"}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (addAlert.type !== "loading") {
+            setAddAlert({ type: "none", title: "", message: "" });
+          }
+        }}
+      >
+        <Pressable
+          style={styles.alertOverlay}
+          onPress={() => {
+            if (addAlert.type !== "loading") {
+              setAddAlert({ type: "none", title: "", message: "" });
+            }
+          }}
+        >
+          <Pressable
+            style={[styles.alertCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <View
+              style={[
+                styles.alertIconCircle,
+                {
+                  backgroundColor:
+                    addAlert.type === "loading"
+                      ? "rgba(56,189,248,0.2)"
+                      : "rgba(234,179,8,0.2)",
+                },
+              ]}
+            >
+              {addAlert.type === "loading" ? (
+                <ActivityIndicator size="small" color="#38BDF8" />
+              ) : (
+                <Ionicons name="warning" size={22} color="#EAB308" />
+              )}
+            </View>
+            <Text style={[styles.alertTitle, { color: theme.textPrimary }]}>
+              {addAlert.title}
+            </Text>
+            <Text style={[styles.alertMessage, { color: theme.textSecondary }]}>
+              {addAlert.message}
+            </Text>
+            {addAlert.type === "error" ? (
+              <Pressable
+                style={[styles.alertAction, { backgroundColor: theme.primary }]}
+                onPress={() =>
+                  setAddAlert({ type: "none", title: "", message: "" })
+                }
+              >
+                <Text
+                  style={[styles.alertActionText, { color: theme.background }]}
+                >
+                  Try again
+                </Text>
+              </Pressable>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={showPicker}
         transparent
         animationType="fade"
         onRequestClose={() => setShowPicker(false)}
       >
         <Pressable
-          style={[styles.calendarOverlay, { backgroundColor: "rgba(0,0,0,0.45)" }]}
+          style={[
+            styles.calendarOverlay,
+            { backgroundColor: "rgba(0,0,0,0.45)" },
+          ]}
           onPress={() => setShowPicker(false)}
         >
           <Pressable
@@ -315,7 +508,9 @@ export default function HomeScreen() {
                   ? {
                       [(pendingDueDate ?? selectedDueDate) as string]: {
                         selected: true,
-                        selectedColor: theme.primary,
+                        selectedColor:
+                          colorScheme === "dark" ? "#2C7A7B" : theme.primary,
+                        selectedTextColor: "#FCFDF9",
                       },
                     }
                   : undefined
@@ -328,36 +523,55 @@ export default function HomeScreen() {
                 dayTextColor: theme.textPrimary,
                 monthTextColor: theme.textPrimary,
                 arrowColor: theme.primary,
-                textDisabledColor: theme.textSecondary,
+                textDisabledColor:
+                  colorScheme === "dark" ? "rgba(252,253,249,0.28)" : "#B8C0CC",
                 todayTextColor: theme.primary,
               }}
             />
             <View style={styles.calendarActions}>
               <Pressable
-                style={[styles.calendarActionBtn, { borderColor: theme.border }]}
+                style={[
+                  styles.calendarActionBtn,
+                  { borderColor: theme.border },
+                ]}
                 onPress={() => {
                   setPendingDueDate(undefined);
                   setDueDate(undefined);
                   setShowPicker(false);
                 }}
               >
-                <Text style={[styles.calendarActionText, { color: theme.textSecondary }]}>
+                <Text
+                  style={[
+                    styles.calendarActionText,
+                    { color: theme.textSecondary },
+                  ]}
+                >
                   Clear
                 </Text>
               </Pressable>
               <Pressable
                 style={[
                   styles.calendarActionBtn,
-                  { backgroundColor: theme.primary, borderColor: theme.primary },
+                  {
+                    backgroundColor: theme.primary,
+                    borderColor: theme.primary,
+                  },
                 ]}
                 onPress={() => {
                   if (pendingDueDate) {
-                    setDueDate(new Date(`${pendingDueDate}T00:00:00`).getTime());
+                    setDueDate(
+                      new Date(`${pendingDueDate}T00:00:00`).getTime(),
+                    );
                   }
                   setShowPicker(false);
                 }}
               >
-                <Text style={[styles.calendarActionText, { color: theme.background }]}>
+                <Text
+                  style={[
+                    styles.calendarActionText,
+                    { color: theme.background },
+                  ]}
+                >
                   Done
                 </Text>
               </Pressable>
@@ -435,6 +649,121 @@ export default function HomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {addToastMessage ? (
+        <View
+          style={[
+            styles.addToast,
+            {
+              backgroundColor:
+                colorScheme === "dark"
+                  ? "rgba(10,12,14,0.96)"
+                  : "rgba(17,17,17,0.96)",
+              borderColor:
+                colorScheme === "dark"
+                  ? "rgba(252,253,249,0.24)"
+                  : "rgba(255,255,255,0.22)",
+            },
+          ]}
+        >
+          <Text style={styles.addToastText}>{addToastMessage}</Text>
+        </View>
+      ) : null}
+    </SafeAreaView>
+  );
+}
+
+function HomeSkeleton() {
+  const { theme, colorScheme } = useTheme();
+  const pulse = React.useRef(new Animated.Value(0.55)).current;
+  const skeletonBase =
+    colorScheme === "dark" ? "rgba(252,253,249,0.12)" : "rgba(0,0,0,0.08)";
+
+  React.useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.55,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  return (
+    <SafeAreaView
+      edges={["top"]}
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
+      <View style={styles.emptyHeader}>
+        <Animated.View
+          style={[
+            styles.skeletonLogo,
+            { backgroundColor: skeletonBase, opacity: pulse },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.skeletonBell,
+            { backgroundColor: skeletonBase, opacity: pulse },
+          ]}
+        />
+      </View>
+
+      <Animated.View
+        style={[
+          styles.skeletonTotalCard,
+          { backgroundColor: skeletonBase, opacity: pulse },
+        ]}
+      />
+
+      <View style={[styles.metricsRow, { marginTop: 8 }]}>
+        <Animated.View
+          style={[
+            styles.skeletonMetricCard,
+            { backgroundColor: skeletonBase, opacity: pulse },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.skeletonMetricCard,
+            { backgroundColor: skeletonBase, opacity: pulse },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.skeletonMetricCard,
+            { backgroundColor: skeletonBase, opacity: pulse },
+          ]}
+        />
+      </View>
+
+      <Animated.View
+        style={[
+          styles.skeletonListCard,
+          { backgroundColor: skeletonBase, opacity: pulse },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.skeletonListCard,
+          { backgroundColor: skeletonBase, opacity: pulse },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.skeletonListCard,
+          { backgroundColor: skeletonBase, opacity: pulse },
+        ]}
+      />
     </SafeAreaView>
   );
 }
@@ -526,83 +855,159 @@ function NormalHome({
   debtors,
   onNotifications,
   hasAlert,
+  listBottomPadding,
 }: {
   debtors: Debtor[];
   onNotifications: () => void;
   hasAlert: boolean;
+  listBottomPadding: number;
 }) {
   const router = useRouter();
   const { removeDebtor } = useDebtors();
-  const { theme } = useTheme();
+  const { theme, colorScheme } = useTheme();
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  const logoTranslateY = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [0, -70],
+    extrapolate: "clamp",
+  });
+  const logoOpacity = scrollY.interpolate({
+    inputRange: [0, 40],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  const avatarBg =
+    colorScheme === "dark" ? "rgba(252,253,249,0.10)" : "rgba(0,0,0,0.05)";
+  const avatarBorder =
+    colorScheme === "dark" ? "rgba(252,253,249,0.24)" : "rgba(0,0,0,0.10)";
 
   const total = debtors.reduce((sum, d) => sum + d.amount, 0);
-  const overdueCount = debtors.filter(
-    (d) =>
-      d.dueDate && new Date(d.dueDate) < new Date() && d.status !== "Settled",
-  ).length;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const overdueCount = debtors.filter((d) => {
+    if (!d.dueDate || d.status === "Settled") return false;
+    const due = parseIsoDateSafe(d.dueDate);
+    return !!due && toDayStart(due).getTime() < todayStart.getTime();
+  }).length;
+  const sortedDebtors = React.useMemo(() => {
+    const localTodayStart = new Date();
+    localTodayStart.setHours(0, 0, 0, 0);
+    return [...debtors].sort((a, b) => {
+      const aOverdue =
+        !!a.dueDate &&
+        (() => {
+          const due = parseIsoDateSafe(a.dueDate);
+          if (!due) return false;
+          const dueStart = toDayStart(due);
+          return dueStart.getTime() < localTodayStart.getTime();
+        })() &&
+        a.status !== "Settled";
+      const bOverdue =
+        !!b.dueDate &&
+        (() => {
+          const due = parseIsoDateSafe(b.dueDate);
+          if (!due) return false;
+          const dueStart = toDayStart(due);
+          return dueStart.getTime() < localTodayStart.getTime();
+        })() &&
+        b.status !== "Settled";
+      if (aOverdue === bOverdue) return 0;
+      return aOverdue ? -1 : 1;
+    });
+  }, [debtors]);
 
   return (
     <View style={[styles.normalWrapper, { backgroundColor: theme.background }]}>
-      {/* Header */}
-      {/* App Bar */}
-      <View style={styles.emptyHeader}>
-        <BlackbookLogo size={30} />
+      <Animated.View
+        style={[
+          styles.stickyHeaderContainer,
+          {
+            backgroundColor: theme.background,
+            transform: [{ translateY: logoTranslateY }],
+          },
+        ]}
+      >
+        <Animated.View style={[styles.emptyHeader, { opacity: logoOpacity }]}>
+          <BlackbookLogo size={30} />
+          <NotificationBell
+            onPress={onNotifications}
+            hasAlert={hasAlert}
+            color={theme.textSecondary}
+          />
+        </Animated.View>
 
-        <NotificationBell
-          onPress={onNotifications}
-          hasAlert={hasAlert}
-          color={theme.textSecondary}
-        />
-      </View>
-
-      {/* Balance Card */}
-      <View style={[styles.totalCard, { backgroundColor: theme.card }]}>
-        <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>
-          Outstanding Balance
-        </Text>
-        <Text style={[styles.totalAmount, { color: theme.textPrimary }]}>
-          R{total.toFixed(2)}
-        </Text>
-      </View>
-
-      {/* Metrics */}
-      <View style={styles.metricsRow}>
-        <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-          <Ionicons name="people-outline" size={20} color={theme.textPrimary} />
-          <Text style={[styles.metricValue, { color: theme.textPrimary }]}>
-            {debtors.length}
+        <View
+          style={[
+            styles.totalCard,
+            { backgroundColor: theme.card, marginBottom: 10 },
+          ]}
+        >
+          <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>
+            Outstanding Balance
           </Text>
-          <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-            Debtors
+          <Text style={[styles.totalAmount, { color: theme.textPrimary }]}>
+            R{total.toFixed(2)}
           </Text>
         </View>
+      </Animated.View>
 
-        <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-          <Ionicons name="alert-circle-outline" size={20} color="#E53935" />
-          <Text style={[styles.metricValue, styles.overdueText]}>
-            {overdueCount}
-          </Text>
-          <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-            Overdue
-          </Text>
-        </View>
-
-        <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
-          <Ionicons name="checkmark-done-outline" size={20} color="#10B981" />
-          <Text style={[styles.metricValue, { color: theme.textPrimary }]}>
-            {debtors.filter((d) => d.status === "Settled").length}
-          </Text>
-          <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-            Settled
-          </Text>
-        </View>
-      </View>
-
-      {/* Debtor List */}
-      <FlatList
-        data={debtors}
+      <Animated.FlatList
+        data={sortedDebtors}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{
+          paddingTop: 210,
+          paddingBottom: listBottomPadding,
+        }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
+        scrollEventThrottle={16}
+        ListHeaderComponent={() => (
+          <View style={[styles.metricsRow, { marginTop: 8 }]}>
+            <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
+              <Ionicons
+                name="people-outline"
+                size={20}
+                color={theme.textPrimary}
+              />
+              <Text style={[styles.metricValue, { color: theme.textPrimary }]}>
+                {debtors.length}
+              </Text>
+              <Text
+                style={[styles.metricLabel, { color: theme.textSecondary }]}
+              >
+                Debtors
+              </Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
+              <Ionicons name="alert-circle-outline" size={20} color="#E53935" />
+              <Text style={[styles.metricValue, styles.overdueText]}>
+                {overdueCount}
+              </Text>
+              <Text
+                style={[styles.metricLabel, { color: theme.textSecondary }]}
+              >
+                Overdue
+              </Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
+              <Ionicons
+                name="checkmark-done-outline"
+                size={20}
+                color="#10B981"
+              />
+              <Text style={[styles.metricValue, { color: theme.textPrimary }]}>
+                {debtors.filter((d) => d.status === "Settled").length}
+              </Text>
+              <Text
+                style={[styles.metricLabel, { color: theme.textSecondary }]}
+              >
+                Settled
+              </Text>
+            </View>
+          </View>
+        )}
         renderItem={({ item }) => (
           <Swipeable
             overshootRight={false}
@@ -610,18 +1015,14 @@ function NormalHome({
               <TouchableOpacity
                 style={styles.deleteAction}
                 onPress={() => {
-                  Alert.alert(
-                    "Delete debtor",
-                    `Remove ${item.name} from your list?`,
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: () => removeDebtor(item.id),
-                      },
-                    ],
-                  );
+                  Alert.alert("Delete debtor", `Remove ${item.name}?`, [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: () => removeDebtor(item.id),
+                    },
+                  ]);
                 }}
               >
                 <Ionicons name="trash-outline" size={20} color="#FFF" />
@@ -629,42 +1030,91 @@ function NormalHome({
               </TouchableOpacity>
             )}
           >
-          <TouchableOpacity
-            style={[styles.debtorCard, { backgroundColor: theme.card }]}
-            onPress={() => router.push(`/debtor/${item.id}`)}
-          >
-            <View style={[styles.avatar, { backgroundColor: theme.border }]}>
-              <Text style={[styles.avatarText, { color: theme.textPrimary }]}>
-                {item.name.charAt(0).toUpperCase()}
-              </Text>
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.debtorCard,
+                { backgroundColor: theme.card },
+                item.status === "Settled" && styles.debtorCardSettled,
+              ]}
+              onPress={() => router.push(`/debtor/${item.id}`)}
+            >
+              <View
+                style={[
+                  styles.avatar,
+                  { backgroundColor: avatarBg, borderColor: avatarBorder },
+                ]}
+              >
+                <Text style={[styles.avatarText, { color: theme.textPrimary }]}>
+                  {item.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
 
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.debtorName, { color: theme.textPrimary }]}>
-                {item.name}
-              </Text>
-              {item.dueDate ? (
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.debtorName, { color: theme.textPrimary }]}>
+                  {item.name}
+                </Text>
                 <Text
                   style={[styles.debtorMeta, { color: theme.textSecondary }]}
                 >
-                  Due Date • {new Date(item.dueDate).toLocaleDateString()}
+                  {item.dueDate
+                    ? `Due Date \u2022 ${new Date(item.dueDate).toLocaleDateString()}`
+                    : "No due date"}
                 </Text>
-              ) : (
-                <Text
-                  style={[styles.debtorMeta, { color: theme.textSecondary }]}
-                >
-                  No due date
-                </Text>
-              )}
-            </View>
+              </View>
 
-            <Text style={[styles.amount, { color: theme.textPrimary }]}>
-              R{item.amount.toFixed(2)}
-            </Text>
-          </TouchableOpacity>
+              <View style={styles.amountWrap}>
+                <Text style={[styles.amount, { color: theme.textPrimary }]}>
+                  R{item.amount.toFixed(2)}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.statusText,
+                    item.status === "Settled"
+                      ? styles.statusSettled
+                      : item.status === "Partial"
+                        ? styles.statusPartial
+                        : styles.statusUnpaid,
+                  ]}
+                >
+                  {item.status}
+                </Text>
+              </View>
+            </TouchableOpacity>
           </Swipeable>
         )}
       />
+    </View>
+  );
+}
+
+function MetricItem({
+  icon,
+  value,
+  label,
+  theme,
+  color,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  value: number;
+  label: string;
+  theme: ReturnType<typeof useTheme>["theme"];
+  color?: string;
+}) {
+  return (
+    <View style={[styles.metricCard, { backgroundColor: theme.card }]}>
+      <Ionicons name={icon} size={20} color={color || theme.textPrimary} />
+      <Text
+        style={[
+          styles.metricValue,
+          color ? { color } : { color: theme.textPrimary },
+        ]}
+      >
+        {value}
+      </Text>
+      <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -695,6 +1145,14 @@ const styles = StyleSheet.create({
   },
   normalWrapper: {
     flex: 1,
+  },
+  stickyHeaderContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingTop: 8,
   },
 
   /* App Bars */
@@ -742,6 +1200,33 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: "#E53935",
+  },
+  skeletonLogo: {
+    width: 132,
+    height: 30,
+    borderRadius: 8,
+  },
+  skeletonBell: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  skeletonTotalCard: {
+    borderRadius: 20,
+    height: 128,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  skeletonMetricCard: {
+    borderRadius: 18,
+    height: 108,
+    width: "31%",
+  },
+  skeletonListCard: {
+    borderRadius: 16,
+    height: 82,
+    marginHorizontal: 16,
+    marginBottom: 12,
   },
   emptyWrapper: { flex: 1 },
   emptyContent: {
@@ -835,6 +1320,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
   },
+  modalButtonDisabled: {
+    opacity: 0.6,
+  },
+  alertOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 22,
+  },
+  alertCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  alertIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  alertMessage: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  alertAction: {
+    marginTop: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  alertActionText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
   calendarOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -902,6 +1434,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+  addToast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 96,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  addToastText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    lineHeight: 18,
+  },
 
   /* Cards & Lists (unchanged) */
   totalCard: {
@@ -957,6 +1510,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
   },
+  debtorCardSettled: {
+    opacity: 0.78,
+  },
   deleteAction: {
     width: 96,
     marginRight: 16,
@@ -977,6 +1533,7 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 21,
     backgroundColor: "#E5E7EB",
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
@@ -999,5 +1556,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#111",
+  },
+  amountWrap: {
+    alignItems: "flex-end",
+  },
+  statusText: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  statusSettled: {
+    color: "#10B981",
+  },
+  statusPartial: {
+    color: "#F59E0B",
+  },
+  statusUnpaid: {
+    color: "#9CA3AF",
+  },
+  settledBadge: {
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: "rgba(16,185,129,0.18)",
+  },
+  settledBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#10B981",
+  },
+  overdueDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#E53935",
+    position: "absolute",
+    top: 10,
+    right: 10,
   },
 });
