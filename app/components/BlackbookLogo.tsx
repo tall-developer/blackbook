@@ -1,7 +1,7 @@
 import {
-  Inter_400Regular,
-  Inter_800ExtraBold,
-  useFonts,
+    Inter_400Regular,
+    Inter_800ExtraBold,
+    useFonts,
 } from "@expo-google-fonts/inter";
 import React from "react";
 import { StyleSheet, Text } from "react-native";

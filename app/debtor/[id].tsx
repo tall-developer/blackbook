@@ -3,65 +3,69 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   Alert,
+  LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  UIManager,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDebtors } from "../../context/DebtorsContext";
 import { useTheme } from "../../context/ThemeContext";
 
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 export default function DebtorProfile() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { debtors, interestRate, recordPayment, startNewLoan } = useDebtors();
+  const {
+    debtors,
+    interestRate,
+    recordPayment,
+    startNewLoan,
+    updateLoanAmount,
+  } = useDebtors();
   const { theme, colorScheme } = useTheme();
   const insets = useSafeAreaInsets();
+
   const debtor = id ? debtors.find((d) => d.id === id) : undefined;
+
   const [showPaymentModal, setShowPaymentModal] = React.useState(false);
   const [showNewLoanModal, setShowNewLoanModal] = React.useState(false);
+  const [showEditLoanModal, setShowEditLoanModal] = React.useState(false);
   const [paymentAmount, setPaymentAmount] = React.useState("");
   const [newLoanAmount, setNewLoanAmount] = React.useState("");
+  const [editLoanAmount, setEditLoanAmount] = React.useState("");
+  const [historyExpanded, setHistoryExpanded] = React.useState(false);
 
-  const principal =
-    debtor && typeof debtor.principalAmount === "number"
-      ? debtor.principalAmount
-      : (debtor?.amount ?? 0);
-  const interestAdded =
-    debtor && typeof debtor.interestAdded === "number"
-      ? debtor.interestAdded
-      : 0;
-  const totalOwed = debtor?.amount ?? 0;
-  const totalPaid = debtor?.paidAmount ?? 0;
-  const currentBalance = Math.max(0, totalOwed - totalPaid);
+  const principal = debtor?.principalAmount ?? debtor?.amount ?? 0;
+  const interestAdded = debtor?.interestAdded ?? 0;
+  const currentBalance = Math.max(
+    0,
+    (debtor?.amount ?? 0) - (debtor?.paidAmount ?? 0),
+  );
+
   const isPaid = currentBalance === 0;
-  const isPartial = !isPaid && totalPaid > 0;
-  const latestPayment = debtor?.paymentHistory?.length
-    ? debtor.paymentHistory[debtor.paymentHistory.length - 1]
-    : undefined;
-  const dueDateText = debtor?.dueDate
-    ? new Date(debtor.dueDate).toLocaleDateString()
-    : "No due date";
-  const settledDateText = debtor?.settledAt
-    ? new Date(debtor.settledAt).toLocaleDateString()
-    : undefined;
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const isDueDateOverdue =
-    currentBalance > 0 && debtor?.dueDate
-      ? new Date(debtor.dueDate).getTime() < todayStart.getTime()
-      : false;
+  const isPartial = !isPaid && (debtor?.paidAmount ?? 0) > 0;
+
   const statusMeta = isPaid
     ? {
         title: "Paid in Full",
         subtitle: "Balance is fully settled",
         icon: "checkmark-circle",
         tone: "#10B981",
+        badge: "Settled",
       }
     : isPartial
       ? {
@@ -69,13 +73,37 @@ export default function DebtorProfile() {
           subtitle: "Balance is partially paid",
           icon: "time",
           tone: "#F59E0B",
+          badge: "In Progress",
         }
       : {
           title: "Unpaid",
           subtitle: "No payments recorded yet",
           icon: "alert-circle",
           tone: "#E53E3E",
+          badge: "Pending",
         };
+
+  const toggleHistory = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setHistoryExpanded(!historyExpanded);
+  };
+
+  // Around Line 92
+  const handleEditLoan = () => {
+    if (!debtor) return;
+
+    const parsed = Number(editLoanAmount);
+    console.log("Attempting to update to:", parsed); // Check your terminal for this!
+
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      Alert.alert("Invalid amount", "Enter a valid principal amount.");
+      return;
+    }
+
+    updateLoanAmount(debtor.id, parsed);
+    setShowEditLoanModal(false);
+    setEditLoanAmount("");
+  };
 
   const handleSubmitPayment = React.useCallback(() => {
     if (!debtor) return;
@@ -88,12 +116,6 @@ export default function DebtorProfile() {
     if (applied <= 0) {
       Alert.alert("No payment applied", "This account is already fully paid.");
       return;
-    }
-    if (applied < parsed) {
-      Alert.alert(
-        "Partial application",
-        `Only R${applied.toFixed(2)} was needed to settle this account.`,
-      );
     }
     setPaymentAmount("");
     setShowPaymentModal(false);
@@ -117,7 +139,6 @@ export default function DebtorProfile() {
         <View style={styles.notFoundWrap}>
           <TouchableOpacity
             onPress={() => router.back()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.backButton}
           >
             <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
@@ -135,7 +156,6 @@ export default function DebtorProfile() {
       <View style={[styles.topBar, { top: Math.max(insets.top, 12) }]}>
         <TouchableOpacity
           onPress={() => router.back()}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
@@ -143,17 +163,14 @@ export default function DebtorProfile() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingTop: 56, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: 56, paddingBottom: 120 }}
       >
         <View style={styles.headerSection}>
           <View
             style={[styles.illustrationCircle, { backgroundColor: theme.card }]}
           >
             <Ionicons
-              name={
-                statusMeta.icon as React.ComponentProps<typeof Ionicons>["name"]
-              }
+              name={statusMeta.icon as any}
               size={60}
               color={statusMeta.tone}
             />
@@ -164,9 +181,25 @@ export default function DebtorProfile() {
           <Text style={[styles.mainStatus, { color: statusMeta.tone }]}>
             R{currentBalance.toFixed(2)}
           </Text>
-          <Text style={[styles.subStatus, { color: theme.textSecondary }]}>
-            {statusMeta.subtitle}
-          </Text>
+
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: statusMeta.tone + "15" },
+            ]}
+          >
+            <View
+              style={[styles.statusDot, { backgroundColor: statusMeta.tone }]}
+            />
+            <Text
+              style={[
+                styles.subStatus,
+                { color: statusMeta.tone, fontWeight: "600" },
+              ]}
+            >
+              {statusMeta.badge}
+            </Text>
+          </View>
         </View>
 
         <View
@@ -175,11 +208,18 @@ export default function DebtorProfile() {
             { backgroundColor: theme.card, borderColor: theme.border },
           ]}
         >
-          <DetailRow
-            label="Amount Borrowed"
-            value={`R${principal.toFixed(2)}`}
-            theme={theme}
-          />
+          <TouchableOpacity
+            onPress={() => {
+              setEditLoanAmount(principal.toString());
+              setShowEditLoanModal(true);
+            }}
+          >
+            <DetailRow
+              label="Amount Borrowed"
+              value={`R${principal.toFixed(2)}`}
+              theme={theme}
+            />
+          </TouchableOpacity>
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <DetailRow
             label="Extra Charge"
@@ -187,91 +227,268 @@ export default function DebtorProfile() {
             theme={theme}
           />
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <DetailRow
-            label="Last Payment"
-            value={
-              latestPayment
-                ? `${new Date(latestPayment.paidAt).toLocaleDateString()} \u2022 R${latestPayment.amount.toFixed(2)}`
-                : "No payments yet"
-            }
-            theme={theme}
-          />
+
+          <TouchableOpacity
+            onPress={toggleHistory}
+            activeOpacity={0.7}
+            style={styles.historyToggleRow}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons
+                name="time-outline"
+                size={18}
+                color={theme.textSecondary}
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={{
+                  color: theme.textSecondary,
+                  fontSize: 14,
+                  fontWeight: "500",
+                }}
+              >
+                History & Timeline
+              </Text>
+            </View>
+            <Ionicons
+              name={historyExpanded ? "chevron-up" : "chevron-down"}
+              size={20}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {historyExpanded && (
+            <View style={styles.timelineContainer}>
+              {debtor.paymentHistory && debtor.paymentHistory.length > 0 ? (
+                debtor.paymentHistory.map((item, index) => {
+                  const isDebt = item.type === "debt";
+                  const isLast = index === debtor.paymentHistory.length - 1;
+                  return (
+                    <View key={item.id} style={styles.timelineItem}>
+                      <View style={styles.timelineLeftColumn}>
+                        <View
+                          style={[
+                            styles.lineSegment,
+                            {
+                              backgroundColor:
+                                index === 0 ? "transparent" : theme.border,
+                            },
+                          ]}
+                        />
+                        <View
+                          style={[
+                            styles.timelineCircle,
+                            {
+                              backgroundColor: isDebt
+                                ? theme.primary
+                                : "#10B98120",
+                              borderColor: isDebt ? theme.primary : "#10B981",
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={isDebt ? "briefcase" : "cash"}
+                            size={10}
+                            color={isDebt ? theme.background : "#10B981"}
+                          />
+                        </View>
+                        <View
+                          style={[
+                            styles.lineSegment,
+                            {
+                              backgroundColor: isLast
+                                ? "transparent"
+                                : theme.border,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.timelineRightColumn}>
+                        <View style={styles.timelineHeader}>
+                          <Text
+                            style={[
+                              styles.timelineTitle,
+                              { color: theme.textPrimary },
+                            ]}
+                          >
+                            {isDebt ? "Loan Started" : "Payment"}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.timelineDate,
+                              { color: theme.textSecondary },
+                            ]}
+                          >
+                            {new Date(item.paidAt).toLocaleDateString("en-ZA", {
+                              day: "2-digit",
+                              month: "short",
+                            })}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.timelineSubtitle,
+                            { color: theme.textSecondary },
+                          ]}
+                        >
+                          {isDebt
+                            ? `Initial: R${item.amount.toFixed(2)}`
+                            : `Paid: R${item.amount.toFixed(2)}`}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.emptyHistory}>
+                  No timeline data available
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
-          Payment Summary
-        </Text>
-        <View
-          style={[
-            styles.infoCard,
-            { backgroundColor: theme.card, borderColor: theme.border },
-          ]}
-        >
-          <DetailRow
-            label="Total Paid"
-            value={`R${totalPaid.toFixed(2)}`}
-            theme={theme}
-          />
-
-          {currentBalance > 0 && (
-            <>
+        {!isPaid && (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+              Loan Schedule
+            </Text>
+            <View
+              style={[
+                styles.infoCard,
+                { backgroundColor: theme.card, borderColor: theme.border },
+              ]}
+            >
+              <DetailRow
+                label="Total Paid"
+                value={`R${(debtor.paidAmount ?? 0).toFixed(2)}`}
+                theme={theme}
+              />
               <View
                 style={[styles.divider, { backgroundColor: theme.border }]}
               />
               <DetailRow
-                label="Next Due Date"
-                value={dueDateText}
+                label="Due Date"
+                value={
+                  debtor.dueDate
+                    ? new Date(debtor.dueDate).toLocaleDateString()
+                    : "Not set"
+                }
                 theme={theme}
-                valueColor={isDueDateOverdue ? "#E53935" : theme.textPrimary}
               />
-            </>
-          )}
+            </View>
+          </>
+        )}
 
-          {currentBalance <= 0 && settledDateText && (
-            <>
-              <View
-                style={[styles.divider, { backgroundColor: theme.border }]}
-              />
-              <DetailRow
-                label="Settled On"
-                value={settledDateText}
-                theme={theme}
-              />
-            </>
-          )}
-        </View>
+        {isPaid && debtor.settledAt && (
+          <View
+            style={[
+              styles.infoCard,
+              {
+                backgroundColor: theme.card,
+                borderColor: "#10B981",
+                marginTop: 10,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: "#10B981",
+                fontWeight: "700",
+                textAlign: "center",
+              }}
+            >
+              Account settled on{" "}
+              {new Date(debtor.settledAt).toLocaleDateString()}
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       <View
         style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}
       >
-        {currentBalance > 0 ? (
-          <TouchableOpacity
-            style={[styles.mainButton, { backgroundColor: theme.textPrimary }]}
-            onPress={() => setShowPaymentModal(true)}
-          >
-            <Text style={[styles.buttonText, { color: theme.background }]}>
-              Record Payment
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.mainButton, { backgroundColor: theme.primary }]}
-            onPress={() => setShowNewLoanModal(true)}
-          >
-            <Text style={[styles.buttonText, { color: theme.background }]}>
-              Start New Loan
-            </Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[
+            styles.mainButton,
+            { backgroundColor: isPaid ? theme.primary : theme.textPrimary },
+          ]}
+          onPress={() =>
+            isPaid ? setShowNewLoanModal(true) : setShowPaymentModal(true)
+          }
+        >
+          <Text style={[styles.buttonText, { color: theme.background }]}>
+            {isPaid ? "Start New Loan" : "Record Payment"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
+      {/* Edit Loan Modal */}
+      <Modal
+        visible={showEditLoanModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowEditLoanModal(false)}
+        >
+          <Pressable
+            style={[
+              styles.modalCard,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
+            onPress={(e) => e.stopPropagation()} // This prevents accidental saves
+          >
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Update Borrowed Amount
+            </Text>
+            <TextInput
+              value={editLoanAmount}
+              onChangeText={setEditLoanAmount}
+              keyboardType="numeric"
+              style={[
+                styles.amountInput,
+                {
+                  color: theme.textPrimary,
+                  borderColor: theme.border,
+                  marginTop: 12,
+                },
+              ]}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { borderColor: theme.border }]}
+                onPress={() => setShowEditLoanModal(false)}
+              >
+                <Text
+                  style={[styles.modalBtnText, { color: theme.textSecondary }]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: theme.primary }]}
+                onPress={handleEditLoan}
+              >
+                <Text
+                  style={[styles.modalBtnText, { color: theme.background }]}
+                >
+                  Update
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Payment Modal */}
       <Modal
         visible={showPaymentModal}
         transparent
         animationType="fade"
-        statusBarTranslucent={true}
-        onRequestClose={() => setShowPaymentModal(false)}
+        statusBarTranslucent
       >
         <Pressable
           style={styles.modalOverlay}
@@ -334,12 +551,12 @@ export default function DebtorProfile() {
         </Pressable>
       </Modal>
 
+      {/* New Loan Modal */}
       <Modal
         visible={showNewLoanModal}
         transparent
         animationType="fade"
-        statusBarTranslucent={true}
-        onRequestClose={() => setShowNewLoanModal(false)}
+        statusBarTranslucent
       >
         <Pressable
           style={styles.modalOverlay}
@@ -356,15 +573,12 @@ export default function DebtorProfile() {
               Start New Loan
             </Text>
             <Text style={[styles.modalHint, { color: theme.textSecondary }]}>
-              Enter the amount you are lending. We will add {interestRate}% on
-              top.
+              Enter amount. We add {interestRate}% on top.
             </Text>
             <TextInput
               value={newLoanAmount}
               onChangeText={setNewLoanAmount}
               keyboardType="numeric"
-              placeholder="Enter loan amount"
-              placeholderTextColor={theme.textSecondary}
               style={[
                 styles.amountInput,
                 {
@@ -424,17 +638,8 @@ function DetailRow({ label, value, theme, valueColor }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  notFoundWrap: {
+  container: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  notFoundText: {
-    marginTop: 20,
-    fontSize: 18,
-    fontWeight: "600",
   },
   topBar: {
     position: "absolute",
@@ -444,7 +649,11 @@ const styles = StyleSheet.create({
   backButton: {
     alignSelf: "flex-start",
   },
-  headerSection: { alignItems: "center", marginTop: 40, marginBottom: 32 },
+  headerSection: {
+    alignItems: "center",
+    marginTop: 40,
+    marginBottom: 32,
+  },
   illustrationCircle: {
     width: 120,
     height: 120,
@@ -453,13 +662,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  mainStatus: { fontSize: 32, fontWeight: "700", marginBottom: 4 },
   debtorName: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 8,
   },
-  subStatus: { fontSize: 15 },
+  mainStatus: {
+    fontSize: 32,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 8,
+  },
+  subStatus: {
+    fontSize: 13,
+  },
   infoCard: {
     marginHorizontal: 16,
     borderRadius: 20,
@@ -472,7 +700,65 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 12,
   },
-  divider: { height: 1, width: "100%" },
+  divider: {
+    height: 1,
+    width: "100%",
+  },
+  historyToggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 16,
+  },
+
+  // Timeline Styles
+  timelineContainer: {
+    paddingVertical: 8,
+  },
+  timelineItem: {
+    flexDirection: "row",
+    height: 70,
+  },
+  timelineLeftColumn: {
+    alignItems: "center",
+    width: 30,
+    marginRight: 10,
+  },
+  lineSegment: {
+    width: 1.5,
+    flex: 1,
+  },
+  timelineCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 2,
+  },
+  timelineRightColumn: {
+    flex: 1,
+    paddingTop: 4,
+  },
+  timelineHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  timelineTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  timelineDate: {
+    fontSize: 12,
+  },
+  timelineSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
   sectionTitle: {
     marginHorizontal: 18,
     fontSize: 16,
@@ -484,7 +770,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: "100%",
     paddingHorizontal: 20,
-    backgroundColor: "transparent",
   },
   mainButton: {
     height: 56,
@@ -494,6 +779,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buttonText: { fontSize: 16, fontWeight: "700" },
+  notFoundWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  notFoundText: { fontSize: 18, fontWeight: "600", marginTop: 20 },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -501,21 +788,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
   },
-  modalCard: {
-    width: "100%",
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 18,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  modalHint: {
-    marginTop: 6,
-    marginBottom: 12,
-    fontSize: 13,
-  },
+  modalCard: { width: "100%", borderRadius: 20, borderWidth: 1, padding: 18 },
+  modalTitle: { fontSize: 18, fontWeight: "700" },
+  modalHint: { marginTop: 6, marginBottom: 12, fontSize: 13 },
   amountInput: {
     height: 50,
     borderRadius: 12,
@@ -539,5 +814,11 @@ const styles = StyleSheet.create({
   modalBtnText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  emptyHistory: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
+    paddingVertical: 16,
   },
 });

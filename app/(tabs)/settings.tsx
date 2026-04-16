@@ -1,14 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Slider from "@react-native-community/slider";
+import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking,
   Modal,
   Pressable,
-  Share,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -25,8 +26,10 @@ type AppearanceMode = "Automatic" | "Light" | "Dark";
 
 const NOTIF_ENABLED_KEY = "bb:notif-enabled";
 const NOTIF_DAYS_KEY = "bb:notif-days-before";
+const BIOMETRIC_KEY = "blackbook_biometric_enabled";
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { mode, setMode, theme, colorScheme } = useTheme();
   const { interestRate, setInterestRate, exportBackup, importBackup } =
     useDebtors();
@@ -37,12 +40,15 @@ export default function SettingsScreen() {
   const [showInterestModal, setShowInterestModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showDataModal, setShowDataModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [restoreText, setRestoreText] = useState("");
 
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [notifDaysBefore, setNotifDaysBefore] = useState(3);
   const [notifHydrated, setNotifHydrated] = useState(false);
+  const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
+  const [biometricHydrated, setBiometricHydrated] = useState(false);
 
   const appearance = useMemo<AppearanceMode>(() => {
     if (mode === "light") return "Light";
@@ -91,6 +97,29 @@ export default function SettingsScreen() {
     if (!notifHydrated) return;
     void AsyncStorage.setItem(NOTIF_DAYS_KEY, String(notifDaysBefore));
   }, [notifDaysBefore, notifHydrated]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadBiometricPreference = async () => {
+      try {
+        const value = await AsyncStorage.getItem(BIOMETRIC_KEY);
+        if (!mounted) return;
+        setIsBiometricEnabled(value === "true");
+      } finally {
+        if (mounted) setBiometricHydrated(true);
+      }
+    };
+
+    void loadBiometricPreference();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!biometricHydrated) return;
+    void AsyncStorage.setItem(BIOMETRIC_KEY, String(isBiometricEnabled));
+  }, [isBiometricEnabled, biometricHydrated]);
 
   const SUPPORT_LINKS = {
     coffee: "https://www.buymeacoffee.com/tall_dev",
@@ -159,6 +188,8 @@ export default function SettingsScreen() {
       ? ((interestRate - sliderMin) / (sliderMax - sliderMin)) *
         (sliderWidth - bubbleWidth)
       : 0;
+  const stickyHeaderTop = insets.top + 8;
+  const stickyHeaderHeight = stickyHeaderTop + 44;
 
   const AppearanceOption = ({
     label,
@@ -202,25 +233,29 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: theme.background,
-          paddingTop: insets.top + 8,
-        },
-      ]}
-    >
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View
+        style={[
+          styles.stickyHeader,
+          {
+            backgroundColor: theme.background,
+            paddingTop: stickyHeaderTop,
+            borderBottomColor: cardBorder,
+          },
+        ]}
+      >
+        <Text style={[styles.title, { color: theme.textPrimary }]}>
+          Settings
+        </Text>
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 60, 80) }}
+        contentContainerStyle={{
+          paddingTop: stickyHeaderHeight + 16,
+          paddingBottom: Math.max(insets.bottom + 60, 80),
+        }}
       >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>
-            Settings
-          </Text>
-        </View>
-
         <View
           style={[
             styles.card,
@@ -250,9 +285,78 @@ export default function SettingsScreen() {
             onPress={() => setShowAppearance(true)}
             theme={theme}
           />
+          <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+          <View style={styles.row}>
+            <View style={styles.rowLeft}>
+              <Ionicons
+                name="lock-closed-outline"
+                size={22}
+                color={theme.textSecondary}
+              />
+              <View style={styles.rowTextWrap}>
+                <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
+                  App Lock
+                </Text>
+                <Text
+                  style={[styles.biometricHint, { color: theme.textSecondary }]}
+                >
+                  Secure with Fingerprint, Face, or Device PIN
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isBiometricEnabled}
+              onValueChange={setIsBiometricEnabled}
+              trackColor={{ false: "#767577", true: theme.primary }}
+              thumbColor={theme.background}
+            />
+          </View>
+          <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => router.push("/setup-pin")}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+            >
+              {/* Subtle icon container for a premium feel */}
+              <View
+                style={{
+                  backgroundColor: theme.primary + "15", // ~8% opacity for a soft tint
+                  padding: 8,
+                  borderRadius: 12,
+                }}
+              >
+                <View style={styles.rowLeft}>
+                  <Ionicons
+                    name="keypad-outline"
+                    size={20}
+                    color={theme.primary}
+                  />
+                </View>
+              </View>
+
+              <Text
+                style={{
+                  color: theme.textPrimary,
+                  fontSize: 16,
+                  fontWeight: "500",
+                }}
+              >
+                Set/Change App PIN
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.textSecondary}
+            />
+          </TouchableOpacity>
         </View>
 
-        <View
+        {/*<View
           style={[
             styles.card,
             { backgroundColor: theme.card, borderColor: cardBorder },
@@ -265,6 +369,7 @@ export default function SettingsScreen() {
             theme={theme}
           />
         </View>
+        */}
 
         <View
           style={[
@@ -275,24 +380,7 @@ export default function SettingsScreen() {
           <SettingRow
             icon="star-outline"
             label="Rate & Support"
-            onPress={() => {
-              Alert.alert(
-                "Support",
-                "How can we help?",
-                [
-                  {
-                    text: "Report a Bug",
-                    onPress: () => openLink(SUPPORT_LINKS.email),
-                  },
-                  {
-                    text: "Rate App",
-                    onPress: () =>
-                      openLink("market://details?id=com.apphatch.blackbook"),
-                  },
-                  { text: "Cancel", style: "cancel" },
-                ],
-              );
-            }}
+            onPress={() => setShowSupportModal(true)}
             theme={theme}
           />
           <View style={[styles.divider, { backgroundColor: cardBorder }]} />
@@ -375,6 +463,102 @@ export default function SettingsScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showSupportModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowSupportModal(false)}
+      >
+        <Pressable
+          style={[
+            styles.modalOverlay,
+            {
+              backgroundColor:
+                colorScheme === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.45)",
+            },
+          ]}
+          onPress={() => setShowSupportModal(false)}
+        >
+          <Pressable
+            style={[styles.modalCard, { backgroundColor: theme.card }]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+              Support
+            </Text>
+            <Text
+              style={[styles.supportSubtitle, { color: theme.textSecondary }]}
+            >
+              How can we help?
+            </Text>
+
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                setShowSupportModal(false);
+                void openLink(SUPPORT_LINKS.email);
+              }}
+            >
+              <View style={styles.optionLeft}>
+                <Ionicons
+                  name="bug-outline"
+                  size={22}
+                  color={theme.textSecondary}
+                />
+                <Text
+                  style={[styles.optionLabel, { color: theme.textPrimary }]}
+                >
+                  Report a Bug
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward-outline"
+                size={20}
+                color={theme.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                setShowSupportModal(false);
+                void openLink("market://details?id=com.apphatch.blackbook");
+              }}
+            >
+              <View style={styles.optionLeft}>
+                <Ionicons
+                  name="star-outline"
+                  size={22}
+                  color={theme.textSecondary}
+                />
+                <Text
+                  style={[styles.optionLabel, { color: theme.textPrimary }]}
+                >
+                  Rate App
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward-outline"
+                size={20}
+                color={theme.textSecondary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: theme.primary }]}
+              onPress={() => setShowSupportModal(false)}
+            >
+              <Text
+                style={[styles.closeButtonText, { color: theme.background }]}
+              >
+                Close
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -666,7 +850,11 @@ function SettingRow({ icon, label, value, onPress, theme, iconColor }: any) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress}>
       <View style={styles.rowLeft}>
-        <Ionicons name={icon} size={22} color={iconColor || theme.textSecondary} />
+        <Ionicons
+          name={icon}
+          size={22}
+          color={iconColor || theme.textSecondary}
+        />
         <Text style={[styles.rowLabel, { color: theme.textPrimary }]}>
           {label}
         </Text>
@@ -691,8 +879,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
   },
-  header: {
-    marginBottom: 16,
+  stickyHeader: {
+    position: "absolute",
+    top: 0,
+    left: 16,
+    right: 16,
+    zIndex: 10,
+    paddingBottom: 12,
   },
 
   title: {
@@ -714,16 +907,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
   },
+  settingItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
 
   rowLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
+    flex: 1,
+    minWidth: 0,
   },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  rowTextWrap: {
+    flexShrink: 1,
+    minWidth: 0,
   },
 
   rowLabel: {
@@ -734,6 +940,11 @@ const styles = StyleSheet.create({
   rateValue: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  biometricHint: {
+    fontSize: 12,
+    marginTop: 2,
+    flexShrink: 1,
   },
 
   divider: {
@@ -811,6 +1022,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111",
     marginBottom: 16,
+    textAlign: "center",
+  },
+  supportSubtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: -4,
+    marginBottom: 8,
     textAlign: "center",
   },
 
